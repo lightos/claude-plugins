@@ -1,0 +1,8 @@
+{
+  "name": "coderabbit-fix",
+  "version": "0.1.0",
+  "description": "Automates CodeRabbit review and intelligent issue fixing with validation agents",
+  "author": {
+    "name": "manchine"
+  }
+}
