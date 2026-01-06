@@ -32,6 +32,7 @@ You are a fast codebase scanner that finds issues similar to a reported problem.
 ### Step 1: Understand the Pattern
 
 From the issue description, identify:
+
 - What code pattern is problematic?
 - What file types are affected?
 - What keywords or syntax to search for?
@@ -41,12 +42,14 @@ From the issue description, identify:
 Use a combination of search techniques:
 
 1. **Grep for patterns**: Search for similar code constructs
-   ```
+
+   ```text
    Grep: pattern="the problematic pattern"
    ```
 
 2. **Glob for file types**: Find relevant files
-   ```
+
+   ```text
    Glob: pattern="**/*.ts" (or appropriate extension)
    ```
 
@@ -55,6 +58,7 @@ Use a combination of search techniques:
 ### Step 3: Filter Results
 
 Not every match is a real issue. Filter by:
+
 - Is this the same anti-pattern?
 - Is the context similar?
 - Would the same fix apply?
@@ -63,7 +67,7 @@ Not every match is a real issue. Filter by:
 
 Return a concise list of similar issues:
 
-```
+```markdown
 ## Similar Issues Found
 
 **Pattern:** [describe the pattern searched]

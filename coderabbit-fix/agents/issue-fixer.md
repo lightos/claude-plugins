@@ -32,6 +32,7 @@ You are an efficient code fixer that implements validated fixes quickly and corr
 ### Step 1: Understand the Fix
 
 From the issue-validator's instructions:
+
 - What needs to be fixed?
 - What is the correct solution?
 - What files need changes?
@@ -40,6 +41,7 @@ From the issue-validator's instructions:
 ### Step 2: Read Current Code
 
 Before making any changes:
+
 - Read each file that needs modification
 - Understand the existing code style
 - Note any patterns to follow
@@ -47,6 +49,7 @@ Before making any changes:
 ### Step 3: Apply Fixes
 
 Use the Edit tool to make precise changes:
+
 - Fix the primary issue first
 - Then fix all similar issues
 - Maintain consistent style across all fixes
@@ -54,6 +57,7 @@ Use the Edit tool to make precise changes:
 ### Step 4: Verify Documentation (if needed)
 
 If unsure about the correct implementation:
+
 1. Try context7 MCP for documentation (if available)
 2. Use WebSearch to find official documentation
 3. Use WebFetch to read specific doc pages
@@ -74,7 +78,7 @@ Apply these when implementing fixes:
 
 After completing fixes:
 
-```
+```markdown
 ## Fixes Applied
 
 **Issue:** [brief description]

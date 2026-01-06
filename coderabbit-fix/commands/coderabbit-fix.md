@@ -13,7 +13,7 @@ Run CodeRabbit review on code changes and intelligently fix reported issues usin
 
 Execute the CodeRabbit CLI in the background:
 
-```
+```bash
 coderabbit review --plain
 ```
 
@@ -22,6 +22,7 @@ Capture the full output. If the command fails, report the error and stop.
 ### Step 2: Parse Issues
 
 Parse the CodeRabbit output to extract individual issues. Each issue should include:
+
 - File path and line number (if provided)
 - Issue category (type safety, performance, security, style, etc.)
 - Issue description
@@ -32,10 +33,12 @@ Create a todo list with all identified issues.
 ### Step 3: Process Issues in Parallel
 
 For each issue, spawn an `issue-validator` agent using the Task tool with:
+
 - `subagent_type`: `coderabbit-fix:issue-validator`
 - `model`: `opus` (uses extended thinking/ultrathink)
 
 The validator agent will:
+
 1. Analyze if the issue is valid and necessary to fix
 2. Apply coding principles: YAGNI, SOLID, DRY, SRP, KISS
 3. Search for similar issues in the codebase (spawns `similar-issues-finder`)
@@ -61,6 +64,7 @@ After all fixes are complete, auto-detect the project's linting and testing setu
 ### Step 5: Summary
 
 Provide a summary including:
+
 - Total issues found by CodeRabbit
 - Issues validated as necessary to fix
 - Issues skipped (with reasons)

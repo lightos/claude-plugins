@@ -11,13 +11,13 @@ Automates CodeRabbit code review and intelligent issue fixing using a multi-agen
 
 ## Usage
 
-```
+```bash
 /coderabbit-fix
 ```
 
 ## Architecture
 
-```
+```text
 /coderabbit-fix (command)
     │
     ├── Run coderabbit review --plain (background)
