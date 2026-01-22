@@ -1,61 +1,70 @@
 # CodeRabbit Fix Plugin
 
 Automates CodeRabbit code review and intelligent issue fixing using a
-multi-command, multi-agent architecture designed to prevent context overflow.
+multi-agent architecture with context-safe design.
 
 ## Features
 
 - Runs `coderabbit review --plain` and parses issues into structured JSON
-- Validates each issue against production quality standards using Opus agents
-- Searches codebase for similar issues and batch-fixes them using Haiku agents
+- Intelligent grouping of similar issues (when 20+ issues)
+- Validates each issue with a 4-way decision framework
+- LSP integration for semantic validation (unused variables, type safety)
+- WebSearch verification against official documentation
+- Context-safe architecture: agents write to files, not context
 - Auto-detects and runs project linters/tests after fixes
-- **Context-safe architecture**: Results go to files, not context
 
-## Commands
-
-| Command                | Purpose                                     |
-| ---------------------- | ------------------------------------------- |
-| `/coderabbit-review`   | Run CodeRabbit and parse issues to JSON     |
-| `/coderabbit-validate` | Validate issues with Opus agents            |
-| `/coderabbit-fix`      | Fix validated issues with Haiku agents      |
-| `/coderabbit-auto`     | Run all 3 phases with file-based result aggregation |
-
-### Granular Control (Recommended for Large Codebases)
-
-Run each command in a **fresh session** to avoid context accumulation:
+## Command
 
 ```bash
-# Session 1: Review
-/coderabbit-review
-# Creates: .coderabbit-results/issues.json
-
-# Session 2: Validate
-/coderabbit-validate
-# Creates: .coderabbit-results/issue-*.md, validated-summary.json
-
-# Session 3: Fix
-/coderabbit-fix
-# Applies fixes, creates: fix-summary.json
+/coderabbit
 ```
 
-### Full Automation
+Runs the complete workflow: Review → Group → Handle → Finalize
 
-For smaller codebases or when you want automation with batching:
+## Workflow Phases
 
-```bash
-/coderabbit-auto
-```
+### Phase 1: Review
 
-Auto mode spawns all validators in a single message turn for maximum parallelism.
-Claude Code manages internal concurrency.
+1. Run `coderabbit review --plain`
+2. Parse output into `.coderabbit-results/issues.json`
 
-## Workflow
+### Phase 2: Grouping (Optional)
 
-```text
-Review → Parse → Validate Each Issue → Fix Valid Issues → Lint/Test
-  ↓        ↓           ↓                    ↓
- CLI   issues.json   issue-N.md          Fix appended
-```
+**Only runs when 20+ issues are found.**
+
+Groups similar issues by:
+
+- Same issue type + similar description
+- Same directory + same issue type
+- Same file (multiple issues)
+- Similar description keywords
+
+Reduces agent spawns by handling related issues together.
+
+### Phase 3: Handle Issues
+
+Spawns agents in parallel:
+
+- **Clusters**: `issue-handler-cluster` for grouped issues
+- **Singletons**: `issue-handler` for individual issues
+
+All agents run in parallel in a single message turn.
+
+### Phase 4: Finalize
+
+1. Run linters (with retry loop, max 3 attempts)
+2. Run tests (with retry loop, max 2 attempts)
+3. Generate `summary.md` report
+
+## Agents
+
+| Agent                  | Model | Purpose                                       |
+| ---------------------- | ----- | --------------------------------------------- |
+| `issue-handler`        | Opus  | Validates AND fixes single issues             |
+| `issue-handler-cluster`| Opus  | Validates AND fixes clusters of related issues|
+| `issue-grouper`        | Haiku | Groups similar issues to reduce agent spawns  |
+
+All agents return only "Done" to prevent context overflow.
 
 ## Architecture
 
@@ -63,40 +72,44 @@ Review → Parse → Validate Each Issue → Fix Valid Issues → Lint/Test
 .coderabbit-results/
 ├── raw-output.txt          ← CodeRabbit CLI output
 ├── issues.json             ← Parsed issues (full data)
-├── issue-1.md              ← Validator report for issue 1
-├── issue-2.md              ← Validator report for issue 2
-├── ...
-├── validated-summary.json  ← Aggregated validation results
-└── fix-summary.json        ← Final fix results
+├── groups.json             ← Grouping results (if 20+ issues)
+├── grouper-input.json      ← Minimal issue data for grouper
+├── issue-1.md              ← Handler report for issue 1
+├── issue-2.md              ← Handler report for issue 2
+├── cluster-dark-mode.md    ← Cluster report (if grouped)
+├── cluster-*.md            ← Additional cluster reports
+├── lint-status.txt         ← Linter result (passed/failed)
+├── test-status.txt         ← Test result (passed/failed)
+└── summary.md              ← Final comprehensive report
 ```
 
-### Why Multi-Command?
+## Decision Framework
 
-Single-command approach causes **context overflow** with many issues:
+Handlers use a 4-way decision framework:
 
-- 60+ parallel validator agents all return results to main context
-- Context fills up, can't even compact
-- Session becomes unusable
+| Decision       | Meaning                                    | Action        |
+| -------------- | ------------------------------------------ | ------------- |
+| `VALID-FIX`    | Real issue affecting production quality    | Validate + Fix|
+| `VALID-SKIP`   | Real issue but fix would violate YAGNI/KISS| Validate only |
+| `INVALID`      | CodeRabbit misunderstood the code          | Report only   |
+| `INTENTIONAL`  | Code has explicit comment explaining why   | Report only   |
 
-Multi-command solution:
+## Context Management
 
-- **File-based results**: Agents write to files, not returned to context
-- **Fresh sessions**: Each command runs in its own session
-- **Batched execution**: Auto mode processes 15 issues at a time
-- **No grouping overhead**: Each issue validated independently
+The plugin uses file-based result aggregation to prevent context overflow:
 
-## Agents
+1. **Agents write to files**: Each handler writes its report to a dedicated
+   `.md` file and returns only "Done"
+2. **No context accumulation**: Results don't fill the main session context
+3. **Parallel execution**: All handlers run in a single message turn
+4. **Script-based aggregation**: `generate-report.sh` collects results from
+   files to produce `summary.md`
 
-| Agent             | Model | Purpose                                         |
-| ----------------- | ----- | ----------------------------------------------- |
-| `issue-validator` | Opus  | Validates issues, finds similar patterns        |
-| `issue-fixer`     | Haiku | Applies fixes consistently, appends to file     |
-
-Both agents return only "Done" to avoid filling context with results.
+This architecture allows handling 100+ issues without context exhaustion.
 
 ## Production Quality Standards
 
-Issues are validated against these criteria (none are "just nitpicks"):
+Issues are validated against these criteria:
 
 - **UX/UI bugs** - Dark mode, layout, visual glitches
 - **Writing/copy** - Typos, grammar, punctuation
@@ -105,6 +118,8 @@ Issues are validated against these criteria (none are "just nitpicks"):
 - **Security** - XSS, injection, exposed secrets
 - **Type safety** - Missing/incorrect types
 - **Error handling** - Unhandled errors
+
+**"Nitpick" is not a valid reason to skip.** If it affects users, it gets fixed.
 
 ## Fix Guidelines
 
@@ -117,11 +132,10 @@ Fixes follow YAGNI/KISS principles:
 
 ## Known Limitations
 
-- **Very large codebases (100+ issues):** Auto mode spawns all validators at once.
-  For very large reviews, use granular commands in separate sessions:
-  1. `/coderabbit-review` (Session 1)
-  2. `/coderabbit-validate` (Session 2)
-  3. `/coderabbit-fix` (Session 3)
+- **CodeRabbit CLI required**: Must have `coderabbit` command available
+- **Review timeout**: 10-minute timeout for CodeRabbit CLI execution
+- **Handler timeout**: 10-minute timeout for all handlers to complete
+- **Linting scope**: By default only fixes errors in CodeRabbit-modified files
 
 ## Requirements
 

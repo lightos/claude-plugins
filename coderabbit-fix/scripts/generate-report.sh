@@ -1,7 +1,7 @@
 #!/bin/bash
 # generate-report.sh - Generate CodeRabbit fix summary report
-# Parses META lines from issue files, joins with issues.json, writes full report
-# and prints compact summary to stdout
+# Parses META lines from issue files AND cluster files, joins with issues.json,
+# writes full report and prints compact summary to stdout
 
 set -e
 
@@ -31,6 +31,7 @@ intentional_count=0
 failed_count=0
 pending_count=0
 incomplete_count=0
+cluster_count=0
 
 fixed_items=""
 invalid_items=""
@@ -38,6 +39,9 @@ intentional_items=""
 failed_items=""
 pending_items=""
 incomplete_items=""
+
+# Track processed issue IDs to avoid double-counting from clusters
+declare -A processed_issues
 
 # Helper function to append items without leading newlines
 append_item() {
@@ -50,12 +54,67 @@ append_item() {
     fi
 }
 
-# Process each issue file
+# Process cluster files first (they may contain multiple issues)
+for cluster_file in "$RESULTS_DIR"/cluster-*.md; do
+    [ -f "$cluster_file" ] || continue
+    cluster_count=$((cluster_count + 1))
+
+    # Extract all META lines from cluster file (may have multiple)
+    while IFS= read -r meta_line; do
+        [ -z "$meta_line" ] && continue
+
+        # Extract file and line from META
+        # shellcheck disable=SC2001 # sed with capture groups is cleaner for regex extraction
+        meta_file=$(echo "$meta_line" | sed 's/.*file=\([^ ]*\).*/\1/')
+        # shellcheck disable=SC2001
+        meta_line_num=$(echo "$meta_line" | sed 's/.*line=\([^ ]*\).*/\1/')
+        location="$meta_file:$meta_line_num"
+
+        # Find matching issue ID from issues.json
+        issue_id=$(jq -r --arg f "$meta_file" --arg l "$meta_line_num" \
+            '.issues[] | select(.file == $f and .line == ($l | tonumber)) | .id' \
+            "$ISSUES_JSON" 2>/dev/null | head -1)
+
+        if [ -n "$issue_id" ]; then
+            processed_issues["$issue_id"]=1
+        fi
+
+        # Check if this is a decision or status META
+        if echo "$meta_line" | grep -q 'status=Fixed'; then
+            fix_desc=$(echo "$meta_line" | sed 's/.*description=\([^>]*\) *-->.*/\1/' | sed 's/ *$//')
+            fixed_count=$((fixed_count + 1))
+            append_item fixed_items "- $location - $fix_desc"
+        elif echo "$meta_line" | grep -q 'status=FAILED'; then
+            fix_desc=$(echo "$meta_line" | sed 's/.*description=\([^>]*\) *-->.*/\1/' | sed 's/ *$//')
+            failed_count=$((failed_count + 1))
+            append_item failed_items "- $location - $fix_desc"
+        elif echo "$meta_line" | grep -q 'decision=INVALID'; then
+            description=$(jq -r --arg f "$meta_file" --arg l "$meta_line_num" \
+                '.issues[] | select(.file == $f and .line == ($l | tonumber)) | .description // "Invalid"' \
+                "$ISSUES_JSON" 2>/dev/null | head -1)
+            invalid_count=$((invalid_count + 1))
+            append_item invalid_items "- $location - $description"
+        elif echo "$meta_line" | grep -q 'decision=INTENTIONAL'; then
+            description=$(jq -r --arg f "$meta_file" --arg l "$meta_line_num" \
+                '.issues[] | select(.file == $f and .line == ($l | tonumber)) | .description // "Intentional"' \
+                "$ISSUES_JSON" 2>/dev/null | head -1)
+            intentional_count=$((intentional_count + 1))
+            append_item intentional_items "- $location - $description"
+        fi
+    done < <(grep -o '<!-- META: [^>]* -->' "$cluster_file" 2>/dev/null || true)
+done
+
+# Process individual issue files (skip if already processed via cluster)
 for issue_file in "$RESULTS_DIR"/issue-*.md; do
     [ -f "$issue_file" ] || continue
 
     # Extract issue ID from filename
     issue_id=$(basename "$issue_file" | sed 's/issue-\([0-9]*\)\.md/\1/')
+
+    # Skip if already processed via cluster
+    if [ -n "${processed_issues[$issue_id]:-}" ]; then
+        continue
+    fi
 
     # Get issue details from issues.json
     issue_data=$(jq -r --arg id "$issue_id" '.issues[] | select(.id == ($id | tonumber))' "$ISSUES_JSON" 2>/dev/null)
@@ -139,7 +198,7 @@ test_status="unknown"
 
 # Write full report to summary.md
 cat > "$SUMMARY_FILE" << EOF
-# CodeRabbit Auto - Full Report
+# CodeRabbit - Full Report
 
 **Generated:** $(date -Iseconds)
 
@@ -155,6 +214,7 @@ cat > "$SUMMARY_FILE" << EOF
 | Incomplete | $incomplete_count |
 | **Total** | **$total** |
 
+**Clusters processed:** $cluster_count
 **Lint:** $lint_status
 **Tests:** $test_status
 
@@ -201,16 +261,18 @@ $([ -n "$incomplete_items" ] && printf '%b\n' "$incomplete_items" || printf 'Non
 Detailed reports for each issue are available in:
 \`\`\`
 $RESULTS_DIR/issue-*.md
+$RESULTS_DIR/cluster-*.md
 \`\`\`
 EOF
 
 # Print compact summary to stdout
-echo "## CodeRabbit Auto - Results"
+echo "## CodeRabbit - Results"
 echo ""
 echo "Fixed: $fixed_count | Invalid: $invalid_count | Intentional: $intentional_count"
 [ "$failed_count" -gt 0 ] && echo "Failed: $failed_count"
 [ "$pending_count" -gt 0 ] && echo "Pending: $pending_count"
 [ "$incomplete_count" -gt 0 ] && echo "Incomplete: $incomplete_count"
+[ "$cluster_count" -gt 0 ] && echo "Clusters: $cluster_count"
 echo ""
 
 # Show top 5 fixed items
