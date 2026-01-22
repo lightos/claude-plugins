@@ -1,118 +1,167 @@
 ---
-description: Run CodeRabbit review and intelligently fix reported issues
-allowed-tools: ["Bash", "Read", "Grep", "Glob", "Task", "TodoWrite"]
+description: Fix validated CodeRabbit issues
+allowed-tools: ["Bash", "Read", "Write", "Glob", "Grep", "Task"]
 ---
 
-# CodeRabbit Fix Flow
+# CodeRabbit Fix - Fix Validated Issues with Haiku Agents
 
-Run CodeRabbit review on code changes and intelligently fix reported issues using a multi-agent validation and fixing pipeline.
+This command fixes issues that were validated as VALID-FIX. Each fixer agent
+writes its results to a file - results are NOT collected into context.
 
-## Execution Flow
+## Step 1: Check Prerequisites
 
-### Step 1: Run CodeRabbit Review
-
-Execute the CodeRabbit CLI in the background:
-
-```bash
-coderabbit review --plain
-```
-
-Capture the full output. If the command fails, report the error and stop.
-
-### Step 2: Parse Issues and Setup Results Directory
-
-Parse the CodeRabbit output to extract individual issues. Each issue should include:
-
-- File path and line number (if provided)
-- Issue category (type safety, performance, security, style, etc.)
-- Issue description
-- Suggested fix (if provided)
-
-Create a todo list with all identified issues.
-
-**Setup results directory** to store detailed validation reports (keeps parent context lean):
-
-1. Check if `.coderabbit-results/` exists from a previous run
-2. If it exists, use AskUserQuestion to ask:
-   - "Previous results found in .coderabbit-results/. Clear them?"
-   - Options: "Yes, clear old results" / "No, abort so I can review them first"
-3. If user approves (or directory doesn't exist):
+Check that `validated-summary.json` exists:
 
 ```bash
-rm -rf .coderabbit-results && mkdir -p .coderabbit-results
+cat .coderabbit-results/validated-summary.json 2>/dev/null || echo "NOT_FOUND"
 ```
 
-### Step 3: Process Issues in Parallel
+If NOT_FOUND: Stop and tell user to run `/coderabbit-validate` first.
 
-For each issue (numbered starting at 1), spawn an `issue-validator` agent using the Task tool with:
+## Step 2: Read Validated Issues
 
-- `subagent_type`: `coderabbit-fix:issue-validator`
-- `model`: `opus` (uses extended thinking/ultrathink)
-- `run_in_background`: `true` (reduces UI noise, output written to file)
-- `prompt`: Include the issue details AND the results file path:
+Read and parse `.coderabbit-results/validated-summary.json` to get the list of
+VALID-FIX issues.
 
-  ```text
-  Validate this issue and write your full report to: .coderabbit-results/issue-{N}.md
+If `total_valid` is 0: Tell the user "No issues to fix - all issues were either
+invalid or intentional." and stop.
 
-  Issue #{N}: [issue description]
-  File: [file path]
-  Line: [line number]
-  Suggestion: [CodeRabbit's suggestion]
-  ```
+## Step 3: Spawn Fixer Agents (All in Parallel)
 
-The validator agent will:
+For each VALID-FIX entry, spawn a fixer agent. **Spawn ALL fixers in a SINGLE
+message** for parallel execution. Use ultra-minimal prompts - the agent has
+full instructions built-in.
 
-1. Analyze if the issue is valid and necessary to fix
-2. Apply coding principles: YAGNI, SOLID, DRY, SRP, KISS
-3. Search for similar issues in the codebase (spawns `similar-issues-finder`)
-4. If valid, spawn `issue-fixer` to implement the fix
-5. Write full report to the results file
-6. Return only a single-line status (to keep parent context lean)
+Get similar issues from the validator report (replace `{id}` with the actual issue ID from the JSON):
 
-**Spawn all validator agents in parallel** for maximum efficiency.
+```bash
+grep -A 20 "Similar Issues Found" .coderabbit-results/issue-${id}.md | grep "^-" | head -10
+```
 
-### Step 4: Wait for Completion and Aggregate Results
+```yaml
+Task tool:
+  subagent_type: coderabbit-fix:issue-fixer
+  model: haiku
+  prompt: "#{id} {file}:{line} | AIPrompt: {aiPrompt} | Similar: {similar_list} | Append: .coderabbit-results/issue-${id}.md"
+```
 
-Since validators run in background, wait for them to complete:
+Example:
 
-1. Use `TaskOutput` tool with `block: true` to wait for each background agent
-2. Collect the single-line status returned by each validator
-3. Once all complete, use Glob to find all `issue-*.md` files in `.coderabbit-results/`
-4. Read each file to get the full validation details if needed
-5. Compile statistics: issues fixed, skipped, invalid, intentional
+```text
+#3 src/utils.ts:42 | AIPrompt: Add explicit type annotation | Similar: src/helpers.ts:10, src/api.ts:20 | Append: .coderabbit-results/issue-3.md
+```
 
-The results directory persists for user reference. Users can review individual issue reports there.
+**CRITICAL:**
 
-### Step 5: Auto-Detect and Run Linters/Tests
+- ALL fixers in ONE message (single turn) - they run in parallel automatically
+- Do NOT use `run_in_background: true` - this causes late notification spam
+- Do NOT use TaskOutput
+- Prompt is ONE LINE - agent has full instructions
+- Use `aiPrompt` (not description) - it contains CodeRabbit's exact fix instructions
 
-After all fixes are complete, auto-detect the project's linting and testing setup:
+## Step 4: Wait for Fixers to Complete
+
+Use a single blocking bash command with timeout 600 seconds (600000ms):
+
+```bash
+total={valid_count}
+timeout 600 bash -c '
+  while true; do
+    complete=$(grep -l "## Fix Applied" .coderabbit-results/issue-*.md 2>/dev/null | wc -l)
+    if [ "$complete" -ge "$total" ]; then
+      echo "All $total fixers complete"
+      exit 0
+    fi
+    sleep 15
+  done
+'
+if [ $? -eq 124 ]; then
+  echo "Timeout waiting for fixers after 600 seconds"
+  exit 1
+fi
+```
+
+Replace `{valid_count}` with the actual count of VALID-FIX issues being fixed.
+
+## Step 5: Run Linters and Tests
+
+Auto-detect and run the project's linting and testing setup:
 
 1. Check for common config files:
-   - `package.json` → look for `lint`, `test`, `check` scripts
-   - `Makefile` → look for `lint`, `test` targets
-   - `pyproject.toml` / `setup.py` → look for pytest, ruff, black
-   - `Cargo.toml` → cargo clippy, cargo test
-   - `go.mod` → go vet, go test
+   - `package.json` - look for `lint`, `test`, `check` scripts
+   - `Makefile` - look for `lint`, `test` targets
+   - `pyproject.toml` / `setup.py` - look for pytest, ruff, black
+   - `Cargo.toml` - cargo clippy, cargo test
+   - `go.mod` - go vet, go test
 
-2. Run detected linters and tests in the background using Bash with `run_in_background: true`
+2. Run detected linters
 
-3. Report any failures from linting or tests that may need attention
+3. **Linter Fix Strategy** (configurable):
+   - **Max retry count:** Default 3 attempts. Re-run linters up to this limit.
+   - **Scope option:** Fix only CodeRabbit-introduced errors (recommended) OR all errors
+   - **Pre-existing errors:** Make fixing optional (default: fix only CodeRabbit changes)
+   - **Timeout:** 5 minutes total for lint-fix loop to prevent infinite loops
 
-### Step 6: Summary
+4. If linter errors persist after max retries:
+   - Document which errors could not be auto-fixed
+   - Continue to test phase
 
-Provide a summary including:
+5. Run tests and fix any failures
 
-- Total issues found by CodeRabbit
-- Issues validated as necessary to fix
-- Issues skipped (with reasons)
-- Similar issues found and fixed
-- Linter/test results
-- Location of detailed reports: `.coderabbit-results/`
+6. Document unfixable issues in the summary
 
-## Important Guidelines
+## Step 6: Create Fix Summary
 
-- **Be skeptical of AI suggestions**: CodeRabbit is an AI tool and may flag issues that aren't actually problems. The validator agent must critically evaluate each issue.
-- **Follow existing patterns**: Fixes should match the codebase's existing style and patterns.
-- **Minimize changes**: Apply YAGNI and KISS - don't over-engineer fixes.
-- **Batch similar issues**: When similar issues are found, fix them together for consistency.
-- **Verify with documentation**: When unsure about best practices, check official documentation (try context7 MCP if available, otherwise use web search).
+Read all report files and aggregate fix results into
+`.coderabbit-results/fix-summary.json`:
+
+```json
+{
+  "fixes_applied": [
+    {
+      "id": 1,
+      "file": "src/utils.ts",
+      "line": 42,
+      "description": "Added type annotation",
+      "similar_fixed": 2
+    },
+    {
+      "id": 4,
+      "file": "src/api.ts",
+      "line": 100,
+      "description": "Added error handling",
+      "similar_fixed": 0
+    }
+  ],
+  "total_fixes": 2,
+  "lint_passed": true,
+  "test_passed": true,
+  "timestamp": "2024-01-15T10:40:00Z"
+}
+```
+
+## Step 7: Print Final Summary
+
+```markdown
+## CodeRabbit Fix Results
+
+| #   | File            | Issue                  | Action             |
+| --- | --------------- | ---------------------- | ------------------ |
+| 1   | src/utils.ts:42 | Missing type           | Fixed (+2 similar) |
+| 4   | src/api.ts:100  | Missing error handling | Fixed              |
+
+### Summary
+
+- **Issues fixed:** {total_fixes} (including similar issues)
+- **Lint:** {passed/warnings/failed}
+- **Tests:** {passed/warnings/failed}
+
+### Files Modified
+
+{list of unique files that were modified}
+
+### Notes
+
+- Detailed reports available in `.coderabbit-results/issue-*.md`
+- Fix summary in `.coderabbit-results/fix-summary.json`
+```
