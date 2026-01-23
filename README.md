@@ -8,6 +8,19 @@ This repository contains Claude Code plugins that extend the capabilities of
 the Claude Code CLI. Plugins add custom commands, agents, skills, and workflows
 to your Claude Code sessions.
 
+## Quick Start
+
+```bash
+# Run CodeRabbit review and fix issues
+/coderabbit
+
+# Get a second opinion on code changes
+/codex-review:code
+
+# Auto mode (no prompts, auto-fix valid issues)
+/codex-review:code --auto
+```
+
 ## Plugins
 
 ### coderabbit-fix
@@ -30,13 +43,16 @@ Automates CodeRabbit code review and intelligent issue fixing using a multi-agen
 /coderabbit
 ```
 
-**Architecture:**
+<details>
+<summary><strong>Architecture</strong></summary>
 
 | Agent | Model | Purpose |
 |-------|-------|---------|
 | `issue-handler` | Opus | Validates AND fixes single issues in one pass |
 | `issue-handler-cluster` | Opus | Validates AND fixes clusters of related issues |
 | `issue-grouper` | Haiku | Groups similar issues to reduce agent spawns |
+
+</details>
 
 ### codex-review
 
@@ -48,13 +64,17 @@ Get second-opinion reviews on Claude Code plans and code changes using OpenAI's 
 - Reviews uncommitted code changes via git diff
 - Validates feedback against DRY, KISS, YAGNI, SRP, SOLID principles
 - Opus-powered validation filters Codex output for actionable insights
+- Auto-summon via natural language (see below)
 
 **Usage:**
 
 ```bash
 /codex-review:code           # Review uncommitted changes
 /codex-review:plan plan.md   # Review a plan file
+/codex-review:code --auto    # Auto mode: no prompts, applies fixes
 ```
+
+**Natural Language:** Say "get a second opinion on my changes" or "ask Codex about this approach" to trigger automatically.
 
 ## Installation
 
@@ -107,7 +127,8 @@ ln -s /path/to/claude-plugins/coderabbit-fix /your/project/.claude/plugins/coder
 
 - [Codex CLI](https://github.com/openai/codex): `npm install -g @openai/codex` then `codex auth`
 
-### macOS Users
+<details>
+<summary><strong>macOS Users</strong></summary>
 
 macOS requires additional setup:
 
@@ -121,6 +142,8 @@ brew install coreutils
 # Install jq
 brew install jq
 ```
+
+</details>
 
 ## License
 
