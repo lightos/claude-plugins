@@ -1,0 +1,9 @@
+{
+  "name": "codex-review",
+  "version": "0.1.0",
+  "description": "Get second-opinion reviews on Claude Code plans and code changes using OpenAI Codex CLI",
+  "author": {
+    "name": "Roberto Salgado"
+  },
+  "keywords": ["review", "codex", "second-opinion", "plan-review", "code-review", "consultation", "uncertainty", "consultant"]
+}

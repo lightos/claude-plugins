@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+
 # Parse CodeRabbit raw output into structured JSON
 
 INPUT="${1:-.coderabbit-results/raw-output.txt}"

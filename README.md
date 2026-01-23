@@ -2,6 +2,12 @@
 
 A collection of plugins for [Claude Code](https://claude.com/claude-code).
 
+## Overview
+
+This repository contains Claude Code plugins that extend the capabilities of
+the Claude Code CLI. Plugins add custom commands, agents, skills, and workflows
+to your Claude Code sessions.
+
 ## Plugins
 
 ### coderabbit-fix
@@ -32,22 +38,89 @@ Automates CodeRabbit code review and intelligent issue fixing using a multi-agen
 | `issue-handler-cluster` | Opus | Validates AND fixes clusters of related issues |
 | `issue-grouper` | Haiku | Groups similar issues to reduce agent spawns |
 
-## Installation
+### codex-review
+
+Get second-opinion reviews on Claude Code plans and code changes using OpenAI's Codex CLI.
+
+**Features:**
+
+- Reviews implementation plans before execution
+- Reviews uncommitted code changes via git diff
+- Validates feedback against DRY, KISS, YAGNI, SRP, SOLID principles
+- Opus-powered validation filters Codex output for actionable insights
+
+**Usage:**
 
 ```bash
-# Option 1: Use plugin directory flag
-claude --plugin-dir /path/to/claude-plugins/coderabbit-fix
+/codex-review:code           # Review uncommitted changes
+/codex-review:plan plan.md   # Review a plan file
+```
 
-# Option 2: Copy to project
-cp -r coderabbit-fix/.claude-plugin/* /your/project/.claude-plugin/
-cp -r coderabbit-fix/agents /your/project/.claude-plugin/
-cp -r coderabbit-fix/commands /your/project/.claude-plugin/
+## Installation
+
+### Option 1: Marketplace (Recommended)
+
+Add this repository as a marketplace, then install individual plugins:
+
+```bash
+# Add marketplace
+/plugin marketplace add https://github.com/lightos/claude-plugins
+
+# Install plugins
+/plugin install coderabbit-fix@cc-plugins
+/plugin install codex-review@cc-plugins
+```
+
+### Option 2: Plugin directory flag
+
+```bash
+claude --plugin-dir /path/to/claude-plugins/coderabbit-fix
+```
+
+### Option 3: Copy plugin to your project
+
+```bash
+mkdir -p /your/project/.claude/plugins
+cp -r coderabbit-fix /your/project/.claude/plugins/
+```
+
+### Option 4: Symlink for development
+
+```bash
+ln -s /path/to/claude-plugins/coderabbit-fix /your/project/.claude/plugins/coderabbit-fix
 ```
 
 ## Requirements
 
+### All Plugins
+
 - [Claude Code](https://claude.com/claude-code) CLI
-- [CodeRabbit CLI](https://github.com/coderabbitai/coderabbit) (for coderabbit-fix plugin)
+- **Bash 4.0+** (macOS ships with bash 3.2 - install with `brew install bash`)
+
+### For coderabbit-fix
+
+- [CodeRabbit CLI](https://github.com/coderabbitai/coderabbit): `npm install -g coderabbit`
+- `jq`: `apt install jq` (Linux) or `brew install jq` (macOS)
+- `timeout`: Part of GNU coreutils. macOS: `brew install coreutils` (provides `gtimeout`)
+
+### For codex-review
+
+- [Codex CLI](https://github.com/openai/codex): `npm install -g @openai/codex` then `codex auth`
+
+### macOS Users
+
+macOS requires additional setup:
+
+```bash
+# Install modern bash (required for coderabbit-fix)
+brew install bash
+
+# Install GNU coreutils (provides gtimeout)
+brew install coreutils
+
+# Install jq
+brew install jq
+```
 
 ## License
 

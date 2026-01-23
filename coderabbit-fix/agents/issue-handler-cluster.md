@@ -118,24 +118,74 @@ Read the FIRST issue's file to understand the pattern:
 **Key insight:** If the pattern is valid for one issue, it's likely valid for all
 issues in the cluster (they were grouped because they share the same pattern).
 
-### 2.5. Validate Using LSP (When Available)
+### 2.5. LSP-First Approach
 
-For clusters about unused variables, missing references, or type safety, use LSP
-for accurate validation of the pattern:
+**Default to LSP** when validating the cluster pattern. LSP provides semantic
+understanding that text search cannot:
 
-**If LSP available for file type:**
+| Task | Use LSP | Why LSP wins over Grep |
+|------|---------|------------------------|
+| Check if symbol is used | `findReferences` | Finds usages in callbacks, destructuring, re-exports that Grep misses |
+| Verify actual type | `hover` | Returns compiler's inferred type, not guessed from code reading |
+| Find similar patterns | `documentSymbol` + `findReferences` | Understands code structure, not just text matches |
+| Trace call hierarchy | `incomingCalls`/`outgoingCalls` | Follows actual call graph through indirection |
 
-1. **Unused variable clusters:** Use `LSP.findReferences(file, line, character)`
-   to verify the first issue - if LSP shows usage exists, mark entire cluster INVALID
-2. **Type safety clusters:** Use `LSP.hover(file, line, character)` to get the actual
-   type and validate CodeRabbit's claim
-3. **Cross-file validation:** Use `LSP.incomingCalls()` to check if fixes would
-   break callers
+**When to use Grep instead:**
+
+- LSP returns an error or is unavailable
+- Searching for literal strings, comments, or non-code patterns
+- Cross-language searches
+
+**Key insight:** If you're about to search for a function/variable/type name with Grep,
+ask yourself: "Would `findReferences` or `documentSymbol` give me a more accurate answer?"
+The answer is usually yes.
+
+#### Example: Validating "unused field" cluster
+
+**GOOD (LSP-first):**
+
+1. `LSP.findReferences(file, line, char)` on the field in first issue
+2. If 0 references → pattern is valid, proceed to fix all
+3. If references found → mark entire cluster INVALID
+
+**AVOID (Grep-first):**
+
+1. `Grep` for field name → may miss destructured access, dynamic property access
+2. Less confident conclusion
+
+#### Example: Verifying type-related clusters
+
+**GOOD (LSP-first):**
+
+1. `LSP.hover(file, line, char)` on the expression
+2. Get the actual inferred type from TypeScript
+3. Make decision based on real type, not code reading
+
+**AVOID (Grep-first):**
+
+1. Read surrounding code and guess the type
+2. Miss cases where type inference differs from what code looks like
 
 **Fallback (no LSP or unsupported file type):**
 
 - Rely on Read tool with expanded context
 - Manual inspection
+- Note in report if validation was limited by lack of LSP
+
+### 2.5.1. Log LSP Usage
+
+After attempting (or deciding not to attempt) LSP validation, record:
+
+1. **Did you attempt LSP?** Yes if you called any LSP operation
+2. **Was LSP available?** Yes if operations succeeded, No if error, Unknown if not attempted
+3. **Which operations?** List operations used (findReferences, hover, etc.)
+4. **Why no LSP?** If not attempted, explain why (file type unsupported, not relevant to issue type, etc.)
+
+This logging helps diagnose LSP availability and usage patterns.
+
+**Timing:** Record LSP usage immediately after the LSP attempt/decision (at the end
+of this 2.5 step). These same entries must also be aggregated into the final report
+in section 6 (see "LSP Usage" table in Report Format).
 
 ### 2.6. Verify with Official Docs (When Needed)
 
@@ -171,18 +221,31 @@ For each issue in the cluster:
 
 ### 5. Search for Additional Similar Issues
 
-**Primary (LSP available):**
+Before marking the cluster as complete, check if more issues exist beyond the cluster.
 
-Use LSP for semantic pattern discovery beyond the cluster:
+**Primary strategy (use this first):**
 
 1. `LSP.documentSymbol()` - List all symbols in related directories to find similar
    functions/components
 2. `LSP.findReferences()` - Find all usages of a pattern across the codebase
 3. `LSP.incomingCalls()` - Find all callers that might have the same issue
 
-LSP finds semantic matches that text search misses.
+LSP finds semantic matches that text search misses (renamed imports, aliased functions,
+indirect references through variables).
 
-**Fallback (no LSP):**
+#### Example: Finding similar issues beyond the cluster
+
+**GOOD (LSP-first):**
+
+1. `LSP.documentSymbol(relatedFiles)` → get all functions/components
+2. `LSP.findReferences(patternSymbol)` → find usages across codebase
+3. Check if same pattern exists at locations not in the original cluster
+
+**AVOID (Grep-first):**
+
+1. Grep for pattern → misses renamed imports, aliased functions
+
+**Secondary strategy (when LSP unavailable):**
 
 Use Grep to find MORE issues beyond the cluster that match the pattern:
 
@@ -190,6 +253,8 @@ Use Grep to find MORE issues beyond the cluster that match the pattern:
 # Example: searching for more missing dark mode
 grep -r "bg-white" --include="*.tsx" src/
 ```
+
+Note in report that semantic search was limited if LSP was unavailable.
 
 For any additional issues found:
 
@@ -262,6 +327,22 @@ Write a single report covering the entire cluster.
 
 ---
 
+## LSP Usage
+
+| Operation | Attempted | Result |
+|-----------|-----------|--------|
+| findReferences | Yes/No | Success/Unavailable/N/A |
+| hover | Yes/No | Success/Unavailable/N/A |
+| goToDefinition | Yes/No | Success/Unavailable/N/A |
+| documentSymbol | Yes/No | Success/Unavailable/N/A |
+| incomingCalls | Yes/No | Success/Unavailable/N/A |
+
+**Notes:** [Any context about why LSP was/wasn't used]
+
+<!-- META: lsp-attempted=[yes|no] lsp-available=[yes|no|unknown] lsp-operations=[findReferences,hover,...] -->
+
+---
+
 ## Summary
 
 - **Cluster issues:** {count} (all [fixed|invalid|intentional])
@@ -286,6 +367,36 @@ For machine parsing, include these META comments:
 ```
 
 **CRITICAL:** The description field must NOT contain `>` characters.
+
+**LSP usage tracking:**
+
+```markdown
+<!-- META: lsp-attempted=[yes|no] lsp-available=[yes|no|unknown] lsp-operations=[op1,op2,...] -->
+```
+
+**Format notes for `lsp-operations`:**
+
+- Use comma-separated values with no spaces (e.g., `findReferences,hover,documentSymbol`)
+- Order does not matter
+- When no operations were used, use empty brackets: `lsp-operations=[]`
+- Accepted operations: `findReferences`, `hover`, `documentSymbol`, `goToDefinition`, `findImplementations`
+
+**Validation guidance for parsers:**
+
+Valid examples:
+
+- `lsp-operations=findReferences`
+- `lsp-operations=findReferences,hover`
+- `lsp-operations=hover,documentSymbol,findReferences`
+- `lsp-operations=[]`
+
+Invalid examples:
+
+- `lsp-operations=findReferences, hover` (spaces not allowed)
+- `lsp-operations=unknown_op` (invalid operation name)
+- `lsp-operations=` (missing value - use `[]` for empty)
+
+Suggested validation regex: `^(\[\]|[a-zA-Z]+(,[a-zA-Z]+)*)$`
 
 ## Important Notes
 

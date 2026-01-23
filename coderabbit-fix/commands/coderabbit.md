@@ -10,7 +10,7 @@ with minimal context usage and optimized token consumption.
 
 ## Key Optimizations
 
-1. **Issue Grouping**: When 20+ issues, groups similar ones to reduce agent spawns
+1. **Issue Grouping**: Groups similar issues to reduce agent spawns
 2. **Unified Handlers**: Single agent validates AND fixes (no redundant file reads)
 3. **Cluster Handling**: Related issues handled together in one pass
 
@@ -34,81 +34,49 @@ It is used by the scripts to locate helper utilities and parse issue data.
 
 ## Phase 1: Review
 
-### Step 1.1: Check for Previous Results
+### Step 1.1: Run Review Script
 
 ```bash
-ls .coderabbit-results/issues.json 2>/dev/null
+"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh"
 ```
 
-If file exists, use AskUserQuestion:
+**Output interpretation:**
 
-- Question: "Previous CodeRabbit results found. What should I do?"
-- Options:
-  - "Delete and re-run" - Clear results and run fresh scan
-  - "Skip to handling" - Use existing issues.json
-  - "Abort" - Stop to review existing results
+- `EXISTS:<path>` → Previous results found. Use AskUserQuestion:
+  - "Delete and re-run" → Run with `--force`
+  - "Skip to handling" → Continue to Phase 2/3
+  - "Abort" → Stop workflow
+- `ISSUES:<count>` → Fresh review complete, proceed with count
+- `ERROR: <message>` → Runtime error occurred. Behavior:
+  - **Stop immediately**: Do not proceed to Phase 2/3
+  - **Logging**: Write full error (timestamp, message, stack/diagnostics) to stderr
+    and append to `error.log` for post-mortem analysis
+  - **Preserve partial results**: Serialize current state to `.partial` file alongside
+    any `EXISTS:` results so users can resume or inspect
+  - **User prompt**: Use AskUserQuestion to surface "Attempt recovery" option only
+    for recoverable errors (e.g., timeout, transient network failure)
+  - **--force flag**: Follows the same logging/preservation rules
 
-### Step 1.2: Setup Results Directory
+### Step 1.2: Handle User Decision (if EXISTS)
+
+If user chose "Delete and re-run":
 
 ```bash
-rm -rf .coderabbit-results && mkdir -p .coderabbit-results
+"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" --force
 ```
 
-### Step 1.3: Run CodeRabbit Review
+### Step 1.3: Branch Based on Issue Count
 
-Run the review with a 10-minute timeout:
+From output `ISSUES:{count}`:
 
-```bash
-timeout 600 coderabbit review --plain > .coderabbit-results/raw-output.txt 2>&1
-review_exit=$?
-if [ $review_exit -eq 124 ]; then
-  echo "ERROR: CodeRabbit review timed out after 600 seconds"
-  exit 1
-elif [ $review_exit -ne 0 ]; then
-  echo "ERROR: CodeRabbit review failed"
-  cat .coderabbit-results/raw-output.txt | tail -20
-  exit 1
-fi
-echo "Review: COMPLETE"
-```
-
-### Step 1.4: Parse Issues into JSON
-
-Run the parser script:
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT}" ]; then
-  echo "ERROR: CLAUDE_PLUGIN_ROOT environment variable not set" >&2
-  exit 1
-fi
-
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/parse-issues.sh"
-```
-
-This extracts issues from raw-output.txt and writes issues.json instantly.
-
-Print: "Found {total} issues."
+- **count ≤ 5**: Skip to Phase 3, Small Batch Path
+- **count > 5**: Continue to Phase 2 (Grouping)
 
 ---
 
-## Phase 2: Grouping (Optional)
+## Phase 2: Grouping (>5 issues only)
 
-**This phase only runs if total issues >= 20.**
-
-### Step 2.1: Check Grouping Threshold
-
-```bash
-total=$(jq -r '.total // 0' .coderabbit-results/issues.json)
-if [ "$total" -lt 20 ]; then
-  echo "SKIP_GROUPING"
-else
-  echo "RUN_GROUPING"
-fi
-```
-
-If `SKIP_GROUPING`: Jump to Phase 3 (all issues as singletons).
-
-### Step 2.2: Prepare Grouper Input
+### Step 2.1: Prepare Grouper Input
 
 Extract minimal issue data (NO aiPrompt to save tokens):
 
@@ -117,7 +85,7 @@ jq '[.issues[] | {id, file, line, type, description}]' \
   .coderabbit-results/issues.json > .coderabbit-results/grouper-input.json
 ```
 
-### Step 2.3: Spawn Issue Grouper
+### Step 2.2: Spawn Issue Grouper
 
 ```yaml
 Task tool:
@@ -128,7 +96,7 @@ Task tool:
 
 Wait for grouper to complete (check for groups.json file).
 
-### Step 2.4: Read Grouping Results
+### Step 2.3: Read Grouping Results
 
 ```bash
 cat .coderabbit-results/groups.json
@@ -146,16 +114,44 @@ Print: "Grouped into {group_count} clusters + {singleton_count} singletons"
 
 ## Phase 3: Handle Issues (Unified Validate + Fix)
 
+### Small Batch Path (≤5 issues)
+
+**Use this path when skipping Phase 2 due to small issue count.**
+
+1. Build a single batch prompt with ALL issues from `issues.json`
+2. Spawn one `issue-handler-batch` agent
+3. Skip directly to Step 3.4 (Wait for Handlers)
+
+**Build the batch prompt:**
+
+```bash
+# Extract all issues into batch format (separator must be " ;; " with spaces)
+jq -r '.issues[] | "#\(.id) \(.file):\(.line) | \(.description) | AIPrompt: \(.aiPrompt // "none")"' .coderabbit-results/issues.json | sed ':a;N;$!ba;s/\n/ ;; /g'
+```
+
+**Spawn single batch handler:**
+
+```yaml
+Task tool:
+  subagent_type: coderabbit-fix:issue-handler-batch
+  model: opus
+  prompt: "BATCH: <constructed batch prompt> | OUTPUTS: .coderabbit-results/"
+```
+
+After spawning, skip to Step 3.4 to wait for completion.
+
+---
+
+### Normal Flow (>5 issues)
+
+The following steps apply when Phase 2 (Grouping) was executed.
+
 ### Step 3.1: Determine Processing Mode
 
-If grouping was skipped OR groups.json doesn't exist:
-
-- Process ALL issues as singletons using `issue-handler`
-
-If grouping succeeded:
+From `groups.json`:
 
 - Process clusters using `issue-handler-cluster`
-- Process singletons using `issue-handler`
+- Process singletons in batches using `issue-handler-batch` (max 5 per batch)
 
 ### Step 3.2: Spawn Cluster Handlers (if any)
 
@@ -182,38 +178,61 @@ Task tool:
 
 **Spawn ALL cluster handlers in ONE message.**
 
-### Step 3.3: Spawn Singleton Handlers
+### Step 3.3: Spawn Singleton Batch Handlers
 
-For each singleton issue (from `singletons` array or all issues if no grouping):
+Batch singletons into groups of max 5 to reduce agent overhead.
 
-**Build singleton prompt format:**
+**Batching logic:**
+
+1. Collect all singleton issue IDs from `singletons` array in `groups.json`
+2. Chunk into batches of max 5 issues each
+3. For each batch, spawn one `issue-handler-batch` agent
+
+**Example:** 13 singletons → 3 batch handlers (5 + 5 + 3)
+
+**Build batch prompt format:**
 
 ```text
-#{id} {file}:{line} | {description} | AIPrompt: {aiPrompt} | Output: .coderabbit-results/issue-{id}.md
+BATCH: #{id1} {file1}:{line1} | {desc1} | AIPrompt: {ai1} ;; #{id2} {file2}:{line2} | {desc2} | AIPrompt: {ai2} ;; ... | OUTPUTS: .coderabbit-results/
+```
+
+Get aiPrompt for each issue from issues.json:
+
+```bash
+jq -r --arg id "$issue_id" '.issues[] | select(.id == ($id | tonumber)) | .aiPrompt // empty' .coderabbit-results/issues.json
 ```
 
 ```yaml
 Task tool:
-  subagent_type: coderabbit-fix:issue-handler
+  subagent_type: coderabbit-fix:issue-handler-batch
   model: opus
-  prompt: "<constructed singleton prompt>"
+  prompt: "<constructed batch prompt with up to 5 issues>"
 ```
 
-**Spawn ALL singleton handlers in ONE message (same message as cluster handlers).**
+**Spawn ALL handlers (clusters + singleton batches) in ONE message.**
 
 **CRITICAL:**
 
-- ALL handlers (clusters + singletons) in ONE message - they run in parallel
+- ALL handlers (clusters + singleton batches) in ONE message - they run in parallel
 - Do NOT use `run_in_background: true` - this causes late notification spam
 - Do NOT use TaskOutput
-- Prompt format varies by agent type (cluster vs singleton)
+- Batch handlers write individual `issue-{id}.md` files for each issue
 
 ### Step 3.4: Wait for Handlers to Complete
 
 Run a **single blocking Bash** that polls until all handlers finish:
 
 ```bash
-# Count expected outputs
+# Count expected outputs (singletons = individual issues, not batches)
+#
+# For Small Batch Path (≤5 issues):
+#   cluster_count=0
+#   singleton_count=$(jq '.issues | length' .coderabbit-results/issues.json)
+#
+# For Normal Flow (>5 issues):
+#   cluster_count={number_of_clusters from groups.json}
+#   singleton_count={number_of_singletons from groups.json}
+#
 cluster_count={number_of_clusters}
 singleton_count={number_of_singletons}
 
@@ -221,7 +240,7 @@ timeout 600 bash -c '
   while true; do
     # Count cluster reports
     cluster_done=$(ls .coderabbit-results/cluster-*.md 2>/dev/null | wc -l)
-    # Count singleton reports (issue files with META decision)
+    # Count singleton reports (batch handlers write individual issue-{id}.md files)
     singleton_done=$(grep -l "<!-- META: decision=" .coderabbit-results/issue-*.md 2>/dev/null | wc -l)
 
     total_done=$((cluster_done + singleton_done))

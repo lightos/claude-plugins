@@ -2,8 +2,18 @@
 # generate-report.sh - Generate CodeRabbit fix summary report
 # Parses META lines from issue files AND cluster files, joins with issues.json,
 # writes full report and prints compact summary to stdout
+#
+# Requires: bash 4.0+ (for associative arrays and namerefs)
 
-set -e
+set -euo pipefail
+
+# Check bash version (need 4.0+ for declare -A and local -n)
+if [[ "${BASH_VERSINFO[0]}" -lt 4 ]]; then
+    echo "ERROR: This script requires bash 4.0 or later" >&2
+    echo "Current version: $BASH_VERSION" >&2
+    echo "macOS users: Install with 'brew install bash' and ensure /opt/homebrew/bin/bash is in PATH" >&2
+    exit 1
+fi
 
 RESULTS_DIR=".coderabbit-results"
 ISSUES_JSON="$RESULTS_DIR/issues.json"
@@ -200,7 +210,7 @@ test_status="unknown"
 cat > "$SUMMARY_FILE" << EOF
 # CodeRabbit - Full Report
 
-**Generated:** $(date -Iseconds)
+**Generated:** $(date '+%Y-%m-%dT%H:%M:%S%z')
 
 ## Summary
 

@@ -146,31 +146,70 @@ Ask yourself:
 - Is the suggested fix appropriate? Or is there a better approach?
 - Would the fix break intended behavior? Some "issues" are deliberate design choices.
 
-### 3.5. Validate Using LSP (When Available)
+### 3.5. LSP-First Approach
 
-For issues about unused variables, missing references, or type safety, use LSP for
-accurate validation:
+**Default to LSP** when investigating issues. LSP provides semantic understanding
+that text search cannot:
 
-**If LSP available for file type:**
+| Task | Use LSP | Why LSP wins over Grep |
+|------|---------|------------------------|
+| Check if symbol is used | `findReferences` | Finds usages in callbacks, destructuring, re-exports that Grep misses |
+| Verify actual type | `hover` | Returns compiler's inferred type, not guessed from code reading |
+| Find similar patterns | `documentSymbol` + `findReferences` | Understands code structure, not just text matches |
+| Trace call hierarchy | `incomingCalls`/`outgoingCalls` | Follows actual call graph through indirection |
 
-1. **Unused variable issues:** Use `LSP.findReferences(file, line, character)` to
-   check if the variable is actually used elsewhere in the file or project
-2. **Type safety issues:** Use `LSP.hover(file, line, character)` to get the actual
-   inferred type from the language server
-3. **Missing definition issues:** Use `LSP.goToDefinition(file, line, character)`
-   to verify the symbol exists
+**When to use Grep instead:**
 
-LSP provides semantic understanding that text-based searches miss:
+- LSP returns an error or is unavailable
+- Searching for literal strings, comments, or non-code patterns
+- Cross-language searches
 
-- Finds usages in callbacks, template literals, destructuring
-- Handles variable shadowing and scope chains correctly
-- Returns actual type inference, not guessed types
+**Key insight:** If you're about to search for a function/variable/type name with Grep,
+ask yourself: "Would `findReferences` or `documentSymbol` give me a more accurate answer?"
+The answer is usually yes.
+
+#### Example: Validating "unused field" issue
+
+**GOOD (LSP-first):**
+
+1. `LSP.findReferences(file, line, char)` on the field
+2. If 0 references → field is truly unused
+3. If references found → issue is INVALID
+
+**AVOID (Grep-first):**
+
+1. `Grep` for field name → may miss destructured access, dynamic property access
+2. Less confident conclusion
+
+#### Example: Verifying type-related issues
+
+**GOOD (LSP-first):**
+
+1. `LSP.hover(file, line, char)` on the expression
+2. Get the actual inferred type from TypeScript
+3. Make decision based on real type, not code reading
+
+**AVOID (Grep-first):**
+
+1. Read surrounding code and guess the type
+2. Miss cases where type inference differs from what code looks like
 
 **Fallback (no LSP or unsupported file type):**
 
 - Rely on Read tool with expanded context (30+ lines)
 - Manual inspection of visible code
 - Note in report if validation was limited by lack of LSP
+
+### 3.5.1. Log LSP Usage
+
+After attempting (or deciding not to attempt) LSP validation, record:
+
+1. **Did you attempt LSP?** Yes if you called any LSP operation
+2. **Was LSP available?** Yes if operations succeeded, No if error, Unknown if not attempted
+3. **Which operations?** List operations used (findReferences, hover, etc.)
+4. **Why no LSP?** If not attempted, explain why (file type unsupported, not relevant to issue type, etc.)
+
+This logging helps diagnose LSP availability and usage patterns.
 
 ### 3.6. Verify with Official Docs (When Needed)
 
@@ -210,25 +249,38 @@ Example searches:
 
 ### 6. Search for Similar Issues
 
-**Primary (LSP available):**
+Before marking an issue as fixed, check if the same pattern exists elsewhere.
 
-Use LSP for semantic pattern discovery:
+**Primary strategy (use this first):**
 
-1. `LSP.documentSymbol(file)` - List all symbols in related files to find similar
-   functions/components
-2. `LSP.findReferences(symbol)` - Find all usages of a pattern across the codebase
-3. `LSP.incomingCalls(function)` - Find all callers that might have the same issue
+1. `LSP.documentSymbol(currentFile)` - understand the file's structure
+2. `LSP.findReferences(patternSymbol)` - find all usages of the problematic pattern
+3. `LSP.incomingCalls(function)` - if fixing a function, find all callers that might have same issue
 
-LSP finds semantic matches that text search misses (e.g., finding all components
-that render UI, not just those with a specific class name).
+LSP finds semantic matches that text search misses (renamed imports, aliased functions,
+indirect references through variables).
 
-**Fallback (no LSP):**
+#### Example: Finding similar issues across codebase
+
+**GOOD (LSP-first):**
+
+1. `LSP.documentSymbol(currentFile)` → get all functions/components in file
+2. `LSP.findReferences(symbol)` → find usages across codebase
+3. Check if same pattern exists at call sites
+
+**AVOID (Grep-first):**
+
+1. Grep for pattern → misses renamed imports, aliased functions
+
+**Secondary strategy (when LSP unavailable):**
 
 Use Grep to find similar patterns in the codebase. For example:
 
 - If the issue is about missing error handling, search for similar cases
 - If the issue is about dark mode, search for other places missing it
 - If the issue is about type safety, search for similar type issues
+
+Note in report that semantic search was limited if LSP was unavailable.
 
 ### 7. Fix Similar Issues
 
@@ -299,6 +351,22 @@ Example:
 - src/components/Card.tsx:23 - Added dark mode styling
 
 **Additional Files Modified:** {count}
+
+---
+
+## LSP Usage
+
+| Operation | Attempted | Result |
+|-----------|-----------|--------|
+| findReferences | Yes/No | Success/Unavailable/N/A |
+| hover | Yes/No | Success/Unavailable/N/A |
+| goToDefinition | Yes/No | Success/Unavailable/N/A |
+| documentSymbol | Yes/No | Success/Unavailable/N/A |
+| incomingCalls | Yes/No | Success/Unavailable/N/A |
+
+**Notes:** [Any context about why LSP was/wasn't used]
+
+<!-- META: lsp-attempted=[yes|no] lsp-available=[yes|no|unknown] lsp-operations=[findReferences,hover,...] -->
 ```
 
 ## META Comment Format
@@ -318,6 +386,12 @@ For machine parsing, include these META comments:
 ```
 
 **CRITICAL:** The description field must NOT contain `>` characters.
+
+**LSP usage tracking:**
+
+```markdown
+<!-- META: lsp-attempted=[yes|no] lsp-available=[yes|no|unknown] lsp-operations=[findReferences,hover,...] -->
+```
 
 ## Decision Criteria
 

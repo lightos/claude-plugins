@@ -2,3 +2,4 @@
 *.local.md
 node_modules/
 .coderabbit-results/
+.codex-review/

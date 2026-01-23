@@ -3,10 +3,29 @@
 Automates CodeRabbit code review and intelligent issue fixing using a
 multi-agent architecture with context-safe design.
 
+## Prerequisites
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| Bash 4.0+ | Script execution | macOS: `brew install bash` |
+| CodeRabbit CLI | Code review | `npm install -g coderabbit` |
+| jq | JSON parsing | `apt install jq` (Linux) / `brew install jq` (macOS) |
+| timeout | Review timeout | Linux: built-in / macOS: `brew install coreutils` |
+| Claude Code | Plugin host | See [claude.com/claude-code](https://claude.com/claude-code) |
+
+**Note:** macOS ships with bash 3.2 which lacks required features. Install modern bash with Homebrew.
+
+## Terminology
+
+- **Cluster**: A group of related issues that can be fixed together
+- **Singleton**: An individual issue that is not related to others
+- **Batch**: Up to 5 unrelated singleton issues processed together for efficiency
+
 ## Features
 
 - Runs `coderabbit review --plain` and parses issues into structured JSON
-- Intelligent grouping of similar issues (when 20+ issues)
+- Intelligent grouping of similar issues to reduce agent overhead
+- Singleton batching (max 5 per batch) for efficient processing
 - Validates each issue with a 4-way decision framework
 - LSP integration for semantic validation (unused variables, type safety)
 - WebSearch verification against official documentation
@@ -28,9 +47,7 @@ Runs the complete workflow: Review → Group → Handle → Finalize
 1. Run `coderabbit review --plain`
 2. Parse output into `.coderabbit-results/issues.json`
 
-### Phase 2: Grouping (Optional)
-
-**Only runs when 20+ issues are found.**
+### Phase 2: Grouping
 
 Groups similar issues by:
 
@@ -46,7 +63,7 @@ Reduces agent spawns by handling related issues together.
 Spawns agents in parallel:
 
 - **Clusters**: `issue-handler-cluster` for grouped issues
-- **Singletons**: `issue-handler` for individual issues
+- **Singleton Batches**: `issue-handler-batch` for up to 5 unrelated issues per batch
 
 All agents run in parallel in a single message turn.
 
@@ -58,11 +75,12 @@ All agents run in parallel in a single message turn.
 
 ## Agents
 
-| Agent                  | Model | Purpose                                       |
-| ---------------------- | ----- | --------------------------------------------- |
-| `issue-handler`        | Opus  | Validates AND fixes single issues             |
-| `issue-handler-cluster`| Opus  | Validates AND fixes clusters of related issues|
-| `issue-grouper`        | Haiku | Groups similar issues to reduce agent spawns  |
+| Agent                  | Model | Purpose                                        |
+| ---------------------- | ----- | ---------------------------------------------- |
+| `issue-handler`        | Opus  | Validates AND fixes single issues              |
+| `issue-handler-batch`  | Opus  | Validates AND fixes batches of up to 5 issues  |
+| `issue-handler-cluster`| Opus  | Validates AND fixes clusters of related issues |
+| `issue-grouper`        | Haiku | Groups similar issues to reduce agent spawns   |
 
 All agents return only "Done" to prevent context overflow.
 
@@ -72,11 +90,11 @@ All agents return only "Done" to prevent context overflow.
 .coderabbit-results/
 ├── raw-output.txt          ← CodeRabbit CLI output
 ├── issues.json             ← Parsed issues (full data)
-├── groups.json             ← Grouping results (if 20+ issues)
+├── groups.json             ← Grouping results (clusters + singletons)
 ├── grouper-input.json      ← Minimal issue data for grouper
-├── issue-1.md              ← Handler report for issue 1
-├── issue-2.md              ← Handler report for issue 2
-├── cluster-dark-mode.md    ← Cluster report (if grouped)
+├── issue-1.md              ← Singleton report (from batch handler)
+├── issue-2.md              ← Singleton report (from batch handler)
+├── cluster-dark-mode.md    ← Cluster report
 ├── cluster-*.md            ← Additional cluster reports
 ├── lint-status.txt         ← Linter result (passed/failed)
 ├── test-status.txt         ← Test result (passed/failed)
@@ -137,11 +155,25 @@ Fixes follow YAGNI/KISS principles:
 - **Handler timeout**: 10-minute timeout for all handlers to complete
 - **Linting scope**: By default only fixes errors in CodeRabbit-modified files
 
-## Requirements
+## Troubleshooting
 
-- CodeRabbit CLI installed (`coderabbit` command available)
-- Claude Code with Opus model access
-- `jq` installed (for JSON parsing in scripts)
+### "coderabbit: command not found"
+
+Install CodeRabbit CLI: `npm install -g coderabbit`
+
+### Review times out after 10 minutes
+
+Large codebases may exceed timeout. Try reviewing smaller changesets or
+specific directories.
+
+### "jq: command not found"
+
+Install jq: `apt install jq` (Linux) or `brew install jq` (macOS)
+
+### Linting fails repeatedly
+
+Check that your project's linter configuration is valid. The plugin runs
+whatever linter is configured in your project (eslint, prettier, etc.).
 
 ## Installation
 

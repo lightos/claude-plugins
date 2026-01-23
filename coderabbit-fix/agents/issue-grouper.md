@@ -51,14 +51,11 @@ To prevent context overflow, you MUST:
 
 Do NOT return JSON or detailed results. All details go in the file.
 
-## Grouping Activation Threshold
+## Grouping Activation
 
-**Only group when these conditions are met:**
+**Group when at least one potential group has >= 2 similar issues.**
 
-- Total issues >= 20
-- At least one potential group has >= 2 similar issues
-
-If conditions are not met, put ALL issues in `singletons` array.
+If no issues cluster together, put ALL issues in `singletons` array.
 
 ## Grouping Criteria
 
@@ -104,9 +101,11 @@ Issue 11: description="Change relative path to absolute"
 
 1. **Minimum 2 issues per group** - Groups need at least 2 issues
 2. **Don't force grouping** - If issues don't naturally cluster, leave as singletons
-3. **One issue per group** - An issue can only belong to one group
+3. **CRITICAL: One issue per group** - An issue can ONLY belong to ONE group. If an issue could fit multiple groups, assign it to the FIRST matching group and exclude it from all others. Never duplicate issue IDs across groups.
 4. **Prefer tighter clusters** - Same file > same directory > same type
 5. **Pattern clarity** - Group name should describe the common pattern
+
+**VALIDATION:** Before writing output, verify no issue ID appears in more than one group. If duplicates exist, remove from all but the first group.
 
 ## Output Format
 
@@ -139,11 +138,12 @@ Write JSON to the specified output path:
 ## Algorithm
 
 1. **Parse input** - Extract issues from JSON array
-2. **Check threshold** - If < 20 issues, skip grouping
-3. **Find patterns** - Identify similar issues by criteria above
-4. **Form groups** - Only groups with 2+ issues
-5. **Assign singletons** - Remaining issues go to singletons
-6. **Write output** - Save groups.json
+2. **Find patterns** - Identify similar issues by criteria above
+3. **Form groups** - Only groups with 2+ issues
+4. **Deduplicate** - If any issue appears in multiple groups, keep only in FIRST group
+5. **Assign singletons** - Remaining ungrouped issues go to singletons
+6. **Validate** - Verify: (a) no issue ID in multiple groups, (b) every issue is in exactly one place (either one group OR singletons)
+7. **Write output** - Save groups.json
 
 ## Example Analysis
 

@@ -1,0 +1,22 @@
+{
+  "name": "cc-plugins",
+  "metadata": {
+    "description": "Code review and QA plugins for Claude Code"
+  },
+  "owner": {
+    "name": "Roberto Salgado",
+    "email": "lightos@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "coderabbit-fix",
+      "source": "./coderabbit-fix",
+      "description": "Automates CodeRabbit code review and intelligent issue fixing"
+    },
+    {
+      "name": "codex-review",
+      "source": "./codex-review",
+      "description": "Second-opinion reviews using OpenAI Codex CLI"
+    }
+  ]
+}
