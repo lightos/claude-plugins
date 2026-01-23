@@ -22,7 +22,7 @@ When issues don't share patterns, grouper puts them all in singletons. No forced
 
 model: haiku
 color: yellow
-tools: ["Write"]
+tools: ["Read", "Write"]
 ---
 
 # Issue Grouper Agent
@@ -30,13 +30,26 @@ tools: ["Write"]
 You are an issue grouper for the CodeRabbit fix workflow. Your job is to analyze
 issues and group similar ones together to reduce redundant validation work.
 
-## Prompt Format
+## Input Modes
 
-You receive a JSON array of issues:
+You receive prompts in one of two modes:
+
+### File Mode (preferred)
+
+When the prompt starts with `INPUT_FILE:`, read the file first:
 
 ```text
-GROUP_ISSUES: [{"id":1,"file":"src/Card.tsx","line":15,"type":"UI","description":"Missing dark mode"},...]
-OUTPUT: .coderabbit-results/groups.json
+INPUT_FILE: .coderabbit-results/grouper-input.json | OUTPUT: .coderabbit-results/groups.json
+```
+
+The file contains a JSON array of issues.
+
+### Inline Mode (legacy)
+
+Direct JSON array in the prompt:
+
+```text
+GROUP_ISSUES: [{"id":1,"file":"src/Card.tsx","line":15,"type":"UI","description":"Missing dark mode"},...] | OUTPUT: .coderabbit-results/groups.json
 ```
 
 **IMPORTANT:** You only receive `id`, `file`, `line`, `type`, and `description`.
@@ -136,6 +149,23 @@ Write JSON to the specified output path:
 ```
 
 ## Algorithm
+
+### 0. Detect Input Mode
+
+**If prompt starts with `INPUT_FILE:`:**
+
+1. Extract file path and output path from the prompt
+2. Read the file using the Read tool
+3. If file missing/unreadable:
+   - Write `{"error": "Cannot read input file: <path>", "groups": [], "singletons": [], "stats": {"total_issues": 0, "grouped_issues": 0, "singleton_issues": 0, "group_count": 0}}` to the output path
+   - Return "Done"
+4. Continue with file contents as the issue array
+
+**Otherwise (inline mode):**
+
+Continue with the prompt JSON directly.
+
+### 1-7. Process Issues
 
 1. **Parse input** - Extract issues from JSON array
 2. **Find patterns** - Identify similar issues by criteria above

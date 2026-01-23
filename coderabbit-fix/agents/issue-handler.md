@@ -242,7 +242,8 @@ Example searches:
 **Fix Guidelines (YAGNI/KISS):**
 
 - Use the simplest fix that solves the problem
-- Don't add extra features or "improvements"
+- **Include optimizations if suggested in the AIPrompt** - these are part of the requested fix, not extras
+- Don't add extra features or "improvements" beyond what AIPrompt requests
 - Match existing code style
 - Prefer explicit, readable code over clever one-liners
 - **Avoid nested ternaries** - use if/else for multiple conditions

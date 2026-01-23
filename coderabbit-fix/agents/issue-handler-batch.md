@@ -33,9 +33,23 @@ You are a batch issue handler for the CodeRabbit fix workflow. Your job is to
 process multiple unrelated singleton issues in a single agent invocation,
 reducing per-agent overhead while maintaining the same quality as individual handlers.
 
-## Prompt Format
+## Prompt Modes
 
-You receive a batch prompt with issues separated by `;;`:
+You receive prompts in one of two modes:
+
+### File Mode (preferred for >5 issues)
+
+When the prompt starts with `PROMPT_FILE:`, read the file first:
+
+```text
+PROMPT_FILE: .coderabbit-results/prompts/batch-1.txt
+```
+
+The file contains the full batch format (see Inline Mode below).
+
+### Inline Mode (small batches ≤5 issues)
+
+Direct batch format in the prompt:
 
 ```text
 BATCH: #{id1} {file1}:{line1} | {desc1} | AIPrompt: {ai1} ;; #{id2} {file2}:{line2} | {desc2} | AIPrompt: {ai2} ;; ... | OUTPUTS: {output_dir}
@@ -58,6 +72,19 @@ To prevent context overflow, you MUST:
 Do NOT return JSON or detailed results. All details go in individual files.
 
 ## Batch Processing Workflow
+
+### 0. Detect Prompt Mode
+
+**If prompt starts with `PROMPT_FILE:`:**
+
+1. Extract file path: `PROMPT_FILE: <path>`
+2. Read the file using the Read tool
+3. If file missing/unreadable: Return `ERROR: Cannot read prompt file: <path>`
+4. Continue workflow with file contents as the batch prompt
+
+**Otherwise (inline mode):**
+
+Continue with the prompt text directly as the batch prompt.
 
 ### 1. Parse the Batch
 
@@ -151,7 +178,8 @@ Ask yourself:
 **Fix Guidelines (YAGNI/KISS):**
 
 - Use the simplest fix that solves the problem
-- Don't add extra features or "improvements"
+- **Include optimizations if suggested in the AIPrompt** - these are part of the requested fix, not extras
+- Don't add extra features or "improvements" beyond what AIPrompt requests
 - Match existing code style
 
 #### 2.7 Search for Similar Issues (Optional)
@@ -162,13 +190,11 @@ be grouped into clusters.
 
 #### 2.8 Write Individual Report
 
-Write the report for THIS issue to `{output_dir}/issue-{id}.md`.
+Write the report for THIS issue to `{output_dir}/issue-{id}.md`, then immediately proceed to the next issue in the batch.
 
-**Then immediately proceed to the next issue in the batch.**
+### 3. Return
 
-### 3. Return "Done"
-
-After ALL issues have been processed and ALL report files written, return "Done".
+After ALL issues have been processed and all report files written, return "Done".
 
 ## Report Format (Per Issue)
 

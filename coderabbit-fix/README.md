@@ -91,7 +91,6 @@ All agents return only "Done" to prevent context overflow.
 ├── raw-output.txt          ← CodeRabbit CLI output
 ├── issues.json             ← Parsed issues (full data)
 ├── groups.json             ← Grouping results (clusters + singletons)
-├── grouper-input.json      ← Minimal issue data for grouper
 ├── issue-1.md              ← Singleton report (from batch handler)
 ├── issue-2.md              ← Singleton report (from batch handler)
 ├── cluster-dark-mode.md    ← Cluster report

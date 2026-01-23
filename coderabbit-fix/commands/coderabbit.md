@@ -1,6 +1,7 @@
 ---
 description: Run full CodeRabbit review, validate, and fix workflow automatically
 allowed-tools: ["Bash", "Read", "Write", "Glob", "Grep", "Task", "AskUserQuestion"]
+argument-hint: "[--auto]"
 ---
 
 # CodeRabbit - Optimized Full Workflow
@@ -32,20 +33,36 @@ It is used by the scripts to locate helper utilities and parse issue data.
 
 ---
 
+## Flags
+
+- `--auto`: Non-interactive mode. Deletes previous results, fixes all lint errors (including pre-existing), no prompts.
+
+---
+
 ## Phase 1: Review
+
+### Step 1.0: Parse Arguments
+
+Parse arguments to check for `--auto` flag:
+
+- If ARGUMENTS contains `--auto`: set `AUTO_MODE=true`
+- Otherwise: set `AUTO_MODE=false`
 
 ### Step 1.1: Run Review Script
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh"
+# If AUTO_MODE=true, pass --force to auto-delete previous results
+"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" [--force if AUTO_MODE=true]
 ```
 
 **Output interpretation:**
 
-- `EXISTS:<path>` → Previous results found. Use AskUserQuestion:
-  - "Delete and re-run" → Run with `--force`
-  - "Skip to handling" → Continue to Phase 2/3
-  - "Abort" → Stop workflow
+- `EXISTS:<path>` → Previous results found.
+  - **If `AUTO_MODE=true`**: Re-run with `--force` automatically (skip to Step 1.2)
+  - **If `AUTO_MODE=false`**: Use AskUserQuestion:
+    - "Delete and re-run" → Run with `--force`
+    - "Skip to handling" → Continue to Phase 2/3
+    - "Abort" → Stop workflow
 - `ISSUES:<count>` → Fresh review complete, proceed with count
 - `ERROR: <message>` → Runtime error occurred. Behavior:
   - **Stop immediately**: Do not proceed to Phase 2/3
@@ -59,7 +76,13 @@ It is used by the scripts to locate helper utilities and parse issue data.
 
 ### Step 1.2: Handle User Decision (if EXISTS)
 
-If user chose "Delete and re-run":
+**If `AUTO_MODE=true`**: Automatically re-run with `--force`:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" --force
+```
+
+**If `AUTO_MODE=false`** and user chose "Delete and re-run":
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" --force
@@ -76,39 +99,41 @@ From output `ISSUES:{count}`:
 
 ## Phase 2: Grouping (>5 issues only)
 
-### Step 2.1: Prepare Grouper Input
+### Step 2.1: Spawn Issue Grouper
 
-Extract minimal issue data (NO aiPrompt to save tokens):
+Write grouper input to file (do NOT read it into context):
 
 ```bash
-jq '[.issues[] | {id, file, line, type, description}]' \
-  .coderabbit-results/issues.json > .coderabbit-results/grouper-input.json
+jq '[.issues[] | {id, file, line, type, description}]' .coderabbit-results/issues.json > .coderabbit-results/grouper-input.json
 ```
 
-### Step 2.2: Spawn Issue Grouper
+Spawn grouper with **file path** (not content):
 
 ```yaml
 Task tool:
   subagent_type: coderabbit-fix:issue-grouper
   model: haiku
-  prompt: "GROUP_ISSUES: <contents of grouper-input.json> | OUTPUT: .coderabbit-results/groups.json"
+  prompt: "INPUT_FILE: .coderabbit-results/grouper-input.json | OUTPUT: .coderabbit-results/groups.json"
 ```
 
 Wait for grouper to complete (check for groups.json file).
 
-### Step 2.3: Read Grouping Results
+### Step 2.2: Read Grouping Results
+
+Extract only stats (not full content) to minimize context:
 
 ```bash
-cat .coderabbit-results/groups.json
+jq '.stats' .coderabbit-results/groups.json
 ```
 
-Extract:
+Use the stats to determine handler spawning:
 
-- `groups` array (clusters of related issues)
-- `singletons` array (individual issues)
-- `stats` for logging
+- `group_count`: Number of cluster handlers to spawn
+- `singleton_issues`: Number of singleton batch files to expect
 
 Print: "Grouped into {group_count} clusters + {singleton_count} singletons"
+
+**Note:** The full `groups` and `singletons` arrays are read by `build-handler-prompts.sh`, not by the main agent.
 
 ---
 
@@ -118,6 +143,8 @@ Print: "Grouped into {group_count} clusters + {singleton_count} singletons"
 
 **Use this path when skipping Phase 2 due to small issue count.**
 
+> **Why inline mode here:** For ≤5 issues, the aiPrompt data adds ~10 lines per issue (~50 lines max), which has minimal context cost. Using prompt files for such small batches adds complexity without meaningful benefit.
+
 1. Build a single batch prompt with ALL issues from `issues.json`
 2. Spawn one `issue-handler-batch` agent
 3. Skip directly to Step 3.4 (Wait for Handlers)
@@ -126,7 +153,7 @@ Print: "Grouped into {group_count} clusters + {singleton_count} singletons"
 
 ```bash
 # Extract all issues into batch format (separator must be " ;; " with spaces)
-jq -r '.issues[] | "#\(.id) \(.file):\(.line) | \(.description) | AIPrompt: \(.aiPrompt // "none")"' .coderabbit-results/issues.json | sed ':a;N;$!ba;s/\n/ ;; /g'
+jq -r '.issues[] | "#\(.id) \(.file):\(.line) | \(.description) | AIPrompt: \(.aiPrompt // "none")"' .coderabbit-results/issues.json | paste -sd ' ;; ' -
 ```
 
 **Spawn single batch handler:**
@@ -146,68 +173,61 @@ After spawning, skip to Step 3.4 to wait for completion.
 
 The following steps apply when Phase 2 (Grouping) was executed.
 
-### Step 3.1: Determine Processing Mode
+### Step 3.1: Build Handler Prompts
 
-From `groups.json`:
-
-- Process clusters using `issue-handler-cluster`
-- Process singletons in batches using `issue-handler-batch` (max 5 per batch)
-
-### Step 3.2: Spawn Cluster Handlers (if any)
-
-For each group in `groups.json`, spawn a cluster handler.
-
-**Build cluster prompt format:**
-
-```text
-CLUSTER: {group_id} | PATTERN: {pattern} | ISSUES: #{id1} {file1}:{line1} | AIPrompt: {aiPrompt1} ;; #{id2} {file2}:{line2} | AIPrompt: {aiPrompt2} ;; ... | OUTPUT: .coderabbit-results/cluster-{group_id}.md
-```
-
-Get aiPrompt for each issue from issues.json:
+Run the prompt builder script to generate prompt files from `groups.json` and `issues.json`:
 
 ```bash
-jq -r --arg id "$issue_id" '.issues[] | select(.id == ($id | tonumber)) | .aiPrompt // empty' .coderabbit-results/issues.json
+"${CLAUDE_PLUGIN_ROOT}/scripts/build-handler-prompts.sh"
 ```
+
+**Output interpretation:**
+
+- `PROMPTS_READY: N files` → Prompt files generated, proceed to spawn handlers
+- `ERROR: jq is required...` → Install jq and retry
+
+This creates files in `.coderabbit-results/prompts/`:
+
+- `cluster-{group_id}.txt` - One file per cluster
+- `batch-{n}.txt` - Singletons in batches of max 5
+
+### Step 3.2: Spawn Cluster Handlers
+
+List cluster prompt files:
+
+```bash
+ls .coderabbit-results/prompts/cluster-*.txt 2>/dev/null || echo "No cluster prompts"
+```
+
+For each `cluster-{id}.txt` file, spawn a handler with the **file path** (not content):
 
 ```yaml
 Task tool:
   subagent_type: coderabbit-fix:issue-handler-cluster
   model: opus
-  prompt: "<constructed cluster prompt>"
+  prompt: "PROMPT_FILE: .coderabbit-results/prompts/cluster-{id}.txt"
 ```
 
-**Spawn ALL cluster handlers in ONE message.**
+**Important:** Do NOT read the file content here. Handlers read their own prompt files to avoid loading aiPrompt data into the main context.
 
 ### Step 3.3: Spawn Singleton Batch Handlers
 
-Batch singletons into groups of max 5 to reduce agent overhead.
-
-**Batching logic:**
-
-1. Collect all singleton issue IDs from `singletons` array in `groups.json`
-2. Chunk into batches of max 5 issues each
-3. For each batch, spawn one `issue-handler-batch` agent
-
-**Example:** 13 singletons → 3 batch handlers (5 + 5 + 3)
-
-**Build batch prompt format:**
-
-```text
-BATCH: #{id1} {file1}:{line1} | {desc1} | AIPrompt: {ai1} ;; #{id2} {file2}:{line2} | {desc2} | AIPrompt: {ai2} ;; ... | OUTPUTS: .coderabbit-results/
-```
-
-Get aiPrompt for each issue from issues.json:
+List batch prompt files:
 
 ```bash
-jq -r --arg id "$issue_id" '.issues[] | select(.id == ($id | tonumber)) | .aiPrompt // empty' .coderabbit-results/issues.json
+ls .coderabbit-results/prompts/batch-*.txt 2>/dev/null || echo "No batch prompts"
 ```
+
+For each `batch-{n}.txt` file, spawn a handler with the **file path** (not content):
 
 ```yaml
 Task tool:
   subagent_type: coderabbit-fix:issue-handler-batch
   model: opus
-  prompt: "<constructed batch prompt with up to 5 issues>"
+  prompt: "PROMPT_FILE: .coderabbit-results/prompts/batch-{n}.txt"
 ```
+
+**Important:** Do NOT read the file content here. Handlers read their own prompt files.
 
 **Spawn ALL handlers (clusters + singleton batches) in ONE message.**
 
@@ -324,35 +344,38 @@ done
 
 After first lint pass, if pre-existing errors are detected outside modified files:
 
-```bash
-# Detect pre-existing errors (errors outside CodeRabbit-modified files)
-if [ "$LINT_SCOPE" = "coderabbit-changes" ] && has_preexisting_linter_errors; then
-  # Use AskUserQuestion tool
-  user_choice = AskUserQuestion(
-    "Pre-existing linter errors detected. What should I do?",
-    [
-      "Fix CodeRabbit changes only",
-      "Fix all errors (including pre-existing)",
-      "Skip linting"
-    ]
-  )
+```text
+# PSEUDO-CODE: This block describes agent behavior, not executable bash
 
-  case "$user_choice" in
-    "Fix CodeRabbit changes only")
-      # Keep LINT_SCOPE=coderabbit-changes and continue
-      ;;
-    "Fix all errors (including pre-existing)")
-      # Set LINT_SCOPE=all-errors and retry linting
-      LINT_SCOPE="all-errors"
-      retry_count=0  # Reset retries for new scope
-      ;;
-    "Skip linting")
-      # Skip to test phase
-      lint_status="skipped"
-      break
-      ;;
-  esac
-fi
+# Detect pre-existing errors (errors outside CodeRabbit-modified files)
+IF LINT_SCOPE = "coderabbit-changes" AND has_preexisting_linter_errors:
+  IF AUTO_MODE = true:
+    # Auto mode: aggressively fix all errors without prompting
+    LINT_SCOPE := "all-errors"
+    retry_count := 0  # Reset retries for new scope
+  ELSE:
+    # Interactive mode: ask user
+    user_choice := AskUserQuestion(
+      "Pre-existing linter errors detected. What should I do?",
+      [
+        "Fix CodeRabbit changes only",
+        "Fix all errors (including pre-existing)",
+        "Skip linting"
+      ]
+    )
+
+    MATCH user_choice:
+      "Fix CodeRabbit changes only":
+        # Keep LINT_SCOPE=coderabbit-changes and continue
+        PASS
+      "Fix all errors (including pre-existing)":
+        # Set LINT_SCOPE=all-errors and retry linting
+        LINT_SCOPE := "all-errors"
+        retry_count := 0  # Reset retries for new scope
+      "Skip linting":
+        # Skip to test phase
+        lint_status := "skipped"
+        BREAK
 ```
 
 Document retry count, timeout status, and final scope in the report.
