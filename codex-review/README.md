@@ -14,6 +14,17 @@ OpenAI's Codex CLI.
 - **AI-Validated Feedback**: Claude filters Codex output for actionable insights
 - **Auto-Summon**: Skill triggers when discussing code review or second opinions
 
+## Quick Start
+
+```bash
+# Review your uncommitted code changes
+/codex-review:code
+
+# Or just say in conversation:
+# "get a second opinion on my changes"
+# "ask Codex about this approach"
+```
+
 ## Usage
 
 ### Plan Review
@@ -84,21 +95,25 @@ Here's Codex's perspective on rate limiting:
 Based on this and your Express.js setup, I recommend...
 ```
 
-### Skill Auto-Summon
+### Natural Language Invocation
 
-The plugin includes skills that auto-trigger:
+Skills trigger automatically through conversation - no commands needed:
 
-**Review skill** - when you mention:
+**Review skill** - say things like:
 
 - "second opinion on my code"
 - "review my uncommitted changes"
 - "validate my plan"
 
-**Second-opinion skill** - when you mention:
+**Second-opinion skill** - say things like:
 
-- "ask Codex"
+- "ask Codex about X"
 - "get a second opinion"
 - "what would Codex say"
+- "check with Codex"
+- "consult Codex about this"
+
+**Note:** You can also use `/codex-review:code` or `/codex-review:plan` for direct invocation.
 
 ## Flags
 
@@ -161,7 +176,8 @@ Results are saved to `.codex-review/` directory:
 └── code-review-validated-20260122-150000.md        # Validated report
 ```
 
-## Validation Principles
+<details>
+<summary><strong>Validation Principles</strong></summary>
 
 The issue-handler agent evaluates Codex feedback against:
 
@@ -175,7 +191,10 @@ The issue-handler agent evaluates Codex feedback against:
 | **Security**    | Vulnerabilities (always valid) |
 | **Performance** | Realistic concerns             |
 
-## Decision Categories
+</details>
+
+<details>
+<summary><strong>Decision Categories</strong></summary>
 
 | Category     | Meaning                             | Action                     |
 | ------------ | ----------------------------------- | -------------------------- |
@@ -183,6 +202,8 @@ The issue-handler agent evaluates Codex feedback against:
 | VALID-SKIP   | Legitimate, needs manual review     | Flag for user              |
 | INVALID      | Not applicable, Codex misunderstood | Dismiss                    |
 | INTENTIONAL  | Intentional design choice           | Dismiss                    |
+
+</details>
 
 ## Requirements
 
@@ -198,7 +219,8 @@ claude --plugin-dir /path/to/codex-review
 
 Or add to your Claude Code plugin configuration.
 
-## Architecture
+<details>
+<summary><strong>Architecture</strong></summary>
 
 ### Plugin Components
 
@@ -231,6 +253,8 @@ Or add to your Claude Code plugin configuration.
 - **Write**: Save Codex responses to `.codex-review/`
 - **Read**: Verify output files
 
+</details>
+
 ## Why Use This?
 
 1. **Second Opinion**: Get a different AI's perspective on your work
@@ -246,7 +270,8 @@ Or add to your Claude Code plugin configuration.
 - Code reviews only work in git repositories
 - Codex has its own token limits for large diffs
 
-## Troubleshooting
+<details>
+<summary><strong>Troubleshooting</strong></summary>
 
 ### "codex: command not found"
 
@@ -273,6 +298,8 @@ Break your changes into smaller commits or review specific files:
 ```bash
 git diff -- src/specific-file.ts | codex review -
 ```
+
+</details>
 
 ## License
 
