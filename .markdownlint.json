@@ -3,6 +3,7 @@
   "MD033": {
     "allowed_elements": ["details", "summary", "strong"]
   },
+  "MD036": false,
   "MD041": false,
   "MD060": false
 }

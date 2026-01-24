@@ -1,7 +1,7 @@
 ---
 description: Run full CodeRabbit review, validate, and fix workflow automatically
 allowed-tools: ["Bash", "Read", "Write", "Glob", "Grep", "Task", "AskUserQuestion"]
-argument-hint: "[--auto]"
+argument-hint: "[--auto] [--base <branch>]"
 ---
 
 # CodeRabbit - Optimized Full Workflow
@@ -36,6 +36,7 @@ It is used by the scripts to locate helper utilities and parse issue data.
 ## Flags
 
 - `--auto`: Non-interactive mode. Deletes previous results, fixes all lint errors (including pre-existing), no prompts.
+- `--base <branch>`: Specify base branch for comparison (e.g., `origin/main`, `HEAD~3`). Takes precedence over uncommitted changes. Auto-detected if not provided.
 
 ---
 
@@ -43,16 +44,25 @@ It is used by the scripts to locate helper utilities and parse issue data.
 
 ### Step 1.0: Parse Arguments
 
-Parse arguments to check for `--auto` flag:
+Parse arguments to check for `--auto` and `--base` flags:
 
-- If ARGUMENTS contains `--auto`: set `AUTO_MODE=true`
-- Otherwise: set `AUTO_MODE=false`
+- If ARGUMENTS contains `--auto`: set `AUTO_MODE=true`, otherwise `AUTO_MODE=false`
+- If ARGUMENTS contains `--base <branch>`: set `BASE_BRANCH=<branch>`, otherwise `BASE_BRANCH=""`
 
 ### Step 1.1: Run Review Script
 
+Build script arguments based on parsed flags:
+
 ```bash
-# If AUTO_MODE=true, pass --force to auto-delete previous results
-"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" [--force if AUTO_MODE=true]
+REVIEW_SCRIPT_ARGS=()
+if [[ "$AUTO_MODE" == "true" ]]; then
+    REVIEW_SCRIPT_ARGS+=("--force")
+fi
+if [[ -n "$BASE_BRANCH" ]]; then
+    REVIEW_SCRIPT_ARGS+=("--base" "$BASE_BRANCH")
+fi
+
+"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" "${REVIEW_SCRIPT_ARGS[@]}"
 ```
 
 **Output interpretation:**
@@ -63,7 +73,11 @@ Parse arguments to check for `--auto` flag:
     - "Delete and re-run" → Run with `--force`
     - "Skip to handling" → Continue to Phase 2/3
     - "Abort" → Stop workflow
+- `MODE:uncommitted` → Reviewing uncommitted changes (info)
+- `MODE:base:<branch> (<N> commits)` → Reviewing commits ahead of branch (info)
 - `ISSUES:<count>` → Fresh review complete, proceed with count
+- `ERROR:NO_CHANGES: <message>` → No changes found. **Go to Step 1.1.5** (interactive handling)
+- `ERROR:NO_BASE: <message>` → No base branch found. **Go to Step 1.1.5** (interactive handling)
 - `ERROR: <message>` → Runtime error occurred. Behavior:
   - **Stop immediately**: Do not proceed to Phase 2/3
   - **Logging**: Write full error (timestamp, message, stack/diagnostics) to stderr
@@ -74,19 +88,88 @@ Parse arguments to check for `--auto` flag:
     for recoverable errors (e.g., timeout, transient network failure)
   - **--force flag**: Follows the same logging/preservation rules
 
+### Step 1.1.5: Handle "No Changes" Scenario (ERROR:NO_CHANGES or ERROR:NO_BASE)
+
+This step handles cases where `run-review.sh` returns `ERROR:NO_CHANGES` or `ERROR:NO_BASE`.
+
+**If `AUTO_MODE=true`**: Report error and exit workflow:
+
+```text
+Error: No changes found for review. In --auto mode, cannot prompt for base branch.
+Hint: Specify --base <branch> explicitly, e.g., /coderabbit --auto --base origin/main
+```
+
+**If `AUTO_MODE=false`**: Trigger interactive prompt:
+
+```yaml
+AskUserQuestion:
+  question: "No uncommitted changes found. What would you like to review?"
+  header: "No Changes"
+  options:
+    - label: "Review commits since origin/main"
+      description: "Compare current HEAD to origin/main"
+    - label: "Review commits since origin/master"
+      description: "Compare current HEAD to origin/master"
+    - label: "Review last N commits"
+      description: "Specify how many recent commits to review"
+    - label: "Specify custom base"
+      description: "Enter a branch name or commit to compare against"
+```
+
+**Handle each option:**
+
+**Option: "Review commits since origin/main"**
+Re-run: `"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" --base origin/main [--force if needed]`
+
+**Option: "Review commits since origin/master"**
+Re-run: `"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" --base origin/master [--force if needed]`
+
+**Option: "Review last N commits"**
+
+1. Use AskUserQuestion:
+
+   ```yaml
+   question: "How many recent commits to review?"
+   header: "Commits"
+   options:
+     - label: "1"
+       description: "Just the last commit"
+     - label: "3"
+       description: "Last 3 commits"
+     - label: "5"
+       description: "Last 5 commits"
+     - label: "10"
+       description: "Last 10 commits"
+   ```
+
+2. If user selects the built-in "Other" option (auto-provided by AskUserQuestion), validate input is a positive integer
+3. Re-run: `"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" --base HEAD~N [--force if needed]`
+
+**Option: "Specify custom base"**
+
+1. Prompt user for branch/ref name (can use AskUserQuestion's built-in "Other" for free-form input, or simply ask directly)
+2. Validate branch exists: `git rev-parse --verify <input>`
+3. If invalid, show error and re-prompt
+4. Re-run: `"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" --base <input> [--force if needed]`
+
+**Cancellation:** If user selects the built-in "Other" option on the first prompt and enters "abort" or "cancel", stop workflow with message: "Review cancelled by user"
+
 ### Step 1.2: Handle User Decision (if EXISTS)
 
-**If `AUTO_MODE=true`**: Automatically re-run with `--force`:
+**For both `AUTO_MODE=true` and manual "Delete and re-run":**
+
+Both paths use the same logic to re-run with `--force`:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" --force
+REVIEW_SCRIPT_ARGS=("--force")
+if [[ -n "$BASE_BRANCH" ]]; then
+    REVIEW_SCRIPT_ARGS+=("--base" "$BASE_BRANCH")
+fi
+"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" "${REVIEW_SCRIPT_ARGS[@]}"
 ```
 
-**If `AUTO_MODE=false`** and user chose "Delete and re-run":
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" --force
-```
+- **If `AUTO_MODE=true`**: Execute this automatically
+- **If `AUTO_MODE=false`** and user chose "Delete and re-run": Execute after user confirmation
 
 ### Step 1.3: Branch Based on Issue Count
 
@@ -153,7 +236,7 @@ Print: "Grouped into {group_count} clusters + {singleton_count} singletons"
 
 ```bash
 # Extract all issues into batch format (separator must be " ;; " with spaces)
-jq -r '.issues[] | "#\(.id) \(.file):\(.line) | \(.description) | AIPrompt: \(.aiPrompt // "none")"' .coderabbit-results/issues.json | paste -sd ' ;; ' -
+jq -r '[.issues[] | "#\(.id) \(.file):\(.line) | \(.description) | AIPrompt: \(.aiPrompt // "none")"] | join(" ;; ")' .coderabbit-results/issues.json
 ```
 
 **Spawn single batch handler:**
