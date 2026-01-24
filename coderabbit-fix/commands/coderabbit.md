@@ -226,29 +226,28 @@ Print: "Grouped into {group_count} clusters + {singleton_count} singletons"
 
 **Use this path when skipping Phase 2 due to small issue count.**
 
-> **Why inline mode here:** For ≤5 issues, the aiPrompt data adds ~10 lines per issue (~50 lines max), which has minimal context cost. Using prompt files for such small batches adds complexity without meaningful benefit.
-
-1. Build a single batch prompt with ALL issues from `issues.json`
-2. Spawn one `issue-handler-batch` agent
-3. Skip directly to Step 3.4 (Wait for Handlers)
-
-**Build the batch prompt:**
+1. Write batch prompt to file (do NOT read output into context):
 
 ```bash
-# Extract all issues into batch format (separator must be " ;; " with spaces)
-jq -r '[.issues[] | "#\(.id) \(.file):\(.line) | \(.description) | AIPrompt: \(.aiPrompt // "none")"] | join(" ;; ")' .coderabbit-results/issues.json
+mkdir -p .coderabbit-results/prompts
+# Build complete prompt with BATCH prefix and OUTPUTS suffix
+{
+  printf 'BATCH: '
+  jq -rj '[.issues[] | "#\(.id) \(.file):\(.line) | \(.description) | AIPrompt: \(.aiPrompt // "none")"] | join(" ;; ")' .coderabbit-results/issues.json
+  printf ' | OUTPUTS: .coderabbit-results/'
+} > .coderabbit-results/prompts/batch-1.txt
 ```
 
-**Spawn single batch handler:**
+1. Spawn batch handler with **file path only** (not content):
 
 ```yaml
 Task tool:
   subagent_type: coderabbit-fix:issue-handler-batch
   model: opus
-  prompt: "BATCH: <constructed batch prompt> | OUTPUTS: .coderabbit-results/"
+  prompt: "PROMPT_FILE: .coderabbit-results/prompts/batch-1.txt"
 ```
 
-After spawning, skip to Step 3.4 to wait for completion.
+1. Skip to Step 3.4 (Wait for Handlers)
 
 ---
 
