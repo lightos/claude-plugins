@@ -52,6 +52,8 @@ Execute the plan review script:
 "${CLAUDE_PLUGIN_ROOT}/scripts/plan-review.sh" [--auto] "[PLAN_PATH]"
 ```
 
+**Timeout:** Use `timeout: 600000` (10 minutes) when calling the Bash tool.
+
 ### Handle Script Output
 
 On success, the script (`plan-review.sh`) outputs one of:

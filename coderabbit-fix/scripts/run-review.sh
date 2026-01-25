@@ -189,7 +189,7 @@ else
 fi
 
 # Run CodeRabbit review with timeout (capture exit code explicitly)
-$TIMEOUT_CMD 600 coderabbit review "${REVIEW_ARGS[@]}" "${EXTRA_ARGS[@]}" > "$RESULTS_DIR/raw-output.txt" 2>&1
+$TIMEOUT_CMD 600 coderabbit review "${REVIEW_ARGS[@]}" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} > "$RESULTS_DIR/raw-output.txt" 2>&1
 review_exit=$?
 
 if [ $review_exit -eq 124 ]; then

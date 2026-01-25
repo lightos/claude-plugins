@@ -63,6 +63,16 @@ fi
 PLAN_PATH=$(portable_realpath "$PLAN_PATH")
 PLAN_BASENAME=$(basename "$PLAN_PATH" .md)
 
+# Find timeout command (optional - graceful degradation)
+TIMEOUT_CMD=""
+if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="timeout 600"
+elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="gtimeout 600"
+else
+    echo "WARN: timeout command not found - review may hang on complex prompts" >&2
+fi
+
 # Setup output (in current directory)
 OUTPUT_DIR=".codex-review"
 mkdir -p "$OUTPUT_DIR"
@@ -101,10 +111,8 @@ fi
 
 OUTPUT_FILE="$OUTPUT_DIR/plan-review-${PLAN_BASENAME}-$(date +%Y%m%d-%H%M%S).md"
 
-# Run codex, capture both stdout AND stderr to file
-# Temporarily disable errexit to capture exit code reliably
-set +e
-codex exec "Review implementation plan at: $PLAN_PATH
+# Build the review prompt once (DRY)
+REVIEW_PROMPT="Review implementation plan at: $PLAN_PATH
 
 Read the plan file and analyze for:
 - Completeness: Are all requirements addressed?
@@ -118,8 +126,22 @@ For each issue:
 - SEVERITY: CRITICAL|HIGH|MEDIUM|LOW
 - ISSUE: <description>
 - SUGGESTION: <fix>
-" > "$OUTPUT_FILE" 2>&1
-exit_code=$?
+"
+
+# Run codex, capture both stdout AND stderr to file
+# Temporarily disable errexit to capture exit code reliably
+set +e
+if [[ -n "$TIMEOUT_CMD" ]]; then
+    $TIMEOUT_CMD codex exec "$REVIEW_PROMPT" > "$OUTPUT_FILE" 2>&1
+    exit_code=$?
+    if [[ $exit_code -eq 124 ]]; then
+        echo "ERROR: Codex timed out after 600 seconds" >&2
+        exit 1
+    fi
+else
+    codex exec "$REVIEW_PROMPT" > "$OUTPUT_FILE" 2>&1
+    exit_code=$?
+fi
 set -e
 
 # Check for errors

@@ -1,36 +1,42 @@
 ---
-description: Run Codex code review on uncommitted changes
-argument-hint: "[--auto] [project-path]"
+description: Run Codex code review on codebase, uncommitted changes, or branch comparison
+argument-hint: "[--auto] [--full] [--base <branch>] [project-path]"
 allowed-tools: ["Bash", "Read", "Task", "AskUserQuestion"]
 ---
 
 # Codex Code Review
 
-Review uncommitted code changes using OpenAI Codex as a second opinion.
+Review code changes using OpenAI Codex as a second opinion.
 
 ## Prerequisites
 
 - `codex` CLI must be installed and authenticated
-- Target directory must be a git repository with uncommitted changes
+- Target directory must be a git repository
 
 ## Flags
 
 - `--auto`: Non-interactive mode. Deletes previous results, applies fixes, no prompts.
+- `--full`: Scan all git-tracked files (not just changes). May timeout on large codebases.
+- `--base <branch>`: Compare current HEAD against specified branch (e.g., `--base main`).
 
 ---
 
 ## Phase 1: Run Review Script
 
-Parse arguments to check for `--auto` flag:
+Parse arguments:
 
-- If ARGUMENTS contains `--auto`: set AUTO_MODE=true
+- If ARGUMENTS contains `--auto`: set AUTO_FLAG="--auto"
+- If ARGUMENTS contains `--full`: set FULL_FLAG="--full"
+- If ARGUMENTS contains `--base <branch>`: set BASE_FLAG="--base \<branch\>"
 - Extract project path (default: current directory)
 
 Execute the code review script:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/code-review.sh" [--auto] "${PROJECT_PATH:-.}"
+"${CLAUDE_PLUGIN_ROOT}/scripts/code-review.sh" ${AUTO_FLAG} ${FULL_FLAG} ${BASE_FLAG} "${PROJECT_PATH:-.}"
 ```
+
+**Timeout:** Use `timeout: 600000` (10 minutes) when calling the Bash tool.
 
 ### Handle Script Output
 
@@ -39,8 +45,38 @@ On success, the script (`code-review.sh`) outputs one of:
 1. `EXISTS:/path/to/existing/file.md` - Previous results found
 2. `/path/to/new/file.md` - New scan completed
 
-On failure, the script writes error messages to stderr and exits with a non-zero
-exit code. Do not parse stdout for errors.
+The script also outputs status to stderr:
+
+- `MODE:full (<N> files)` - Scanning all git-tracked files
+- `MODE:uncommitted` - Reviewing uncommitted changes
+- `MODE:base:<branch> (<N> commits)` - Reviewing commits vs base
+- `MODE:base:<branch> (<N> commits, auto-detected)` - Auto-detected base
+- `WARNING: Uncommitted changes will be included in scan` - When --full with dirty tree
+- `WARNING: Uncommitted changes exist but will be ignored` - When --base overrides
+
+On failure, the script writes error messages to stderr:
+
+- `ERROR:NO_CHANGES: <message>` - No changes to review
+- `ERROR:NO_BASE: <message>` - Could not detect base branch
+- `ERROR: <message>` - General errors
+
+### If ERROR:NO_CHANGES or ERROR:NO_BASE Response
+
+When the script returns `ERROR:NO_CHANGES` or `ERROR:NO_BASE`, offer the user options:
+
+```yaml
+AskUserQuestion:
+  question: "No changes detected. Would you like to specify a base branch for comparison?"
+  header: "No changes"
+  options:
+    - label: "Specify base branch"
+      description: "Enter a branch name to compare against (e.g., main, develop)"
+    - label: "Abort"
+      description: "Cancel the review"
+```
+
+If "Specify base branch": Ask for branch name, then re-run with `--base <branch>`
+If "Abort": Stop and inform user
 
 ### If EXISTS Response (and not --auto)
 
@@ -130,5 +166,7 @@ Full report: [validated output path]
 ## Error Handling
 
 - **Not a git repo**: Inform user to run from within a git repository
-- **No changes**: Inform user no uncommitted changes found
+- **No changes (ERROR:NO_CHANGES)**: Offer to specify a base branch for comparison
+- **No base branch (ERROR:NO_BASE)**: Offer to specify a base branch manually
+- **Branch not found**: Inform user the specified branch doesn't exist
 - **Codex not available**: Suggest `npm install -g @openai/codex` and `codex auth`

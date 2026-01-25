@@ -14,6 +14,9 @@ to your Claude Code sessions.
 # Run CodeRabbit review and fix issues
 /coderabbit
 
+# Scan entire codebase with Codex
+/codex-review:code --full
+
 # Get a second opinion on code changes
 /codex-review:code
 
@@ -40,8 +43,12 @@ Automates CodeRabbit code review and intelligent issue fixing using a multi-agen
 **Usage:**
 
 ```bash
-/coderabbit
+/coderabbit                     # Review uncommitted changes
+/coderabbit --base origin/main  # Review commits since branch
+/coderabbit --auto --base main  # Non-interactive mode
 ```
+
+> **Note:** When no uncommitted changes exist, use `--base` to specify what to review. `--auto` mode requires `--base` when there are no uncommitted changes.
 
 <details>
 <summary><strong>Architecture</strong></summary>
@@ -69,6 +76,7 @@ Get second-opinion reviews on Claude Code plans and code changes using OpenAI's 
 **Usage:**
 
 ```bash
+/codex-review:code --full    # Scan all git-tracked files
 /codex-review:code           # Review uncommitted changes
 /codex-review:plan plan.md   # Review a plan file
 /codex-review:code --auto    # Auto mode: no prompts, applies fixes

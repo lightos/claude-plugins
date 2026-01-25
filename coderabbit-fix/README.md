@@ -35,10 +35,19 @@ multi-agent architecture with context-safe design.
 ## Command
 
 ```bash
-/coderabbit
+/coderabbit                     # Review uncommitted changes
+/coderabbit --base origin/main  # Review commits since origin/main
+/coderabbit --auto --base main  # Non-interactive with explicit base
 ```
 
 Runs the complete workflow: Review → Group → Handle → Finalize
+
+## Flags
+
+| Flag | Effect |
+|------|--------|
+| `--auto` | Non-interactive mode: deletes previous results, forces rerun, fixes ALL lint errors (including pre-existing), no prompts |
+| `--base <branch>` | Specify base branch for comparison (e.g., `origin/main`, `HEAD~3`). Auto-detected if not provided. |
 
 ## Workflow Phases
 
@@ -152,7 +161,7 @@ Fixes follow YAGNI/KISS principles:
 - **CodeRabbit CLI required**: Must have `coderabbit` command available
 - **Review timeout**: 10-minute timeout for CodeRabbit CLI execution
 - **Handler timeout**: 10-minute timeout for all handlers to complete
-- **Linting scope**: By default only fixes errors in CodeRabbit-modified files
+- **Linting scope**: By default, only fixes errors in CodeRabbit-modified files. With `--auto`, fixes ALL lint errors including pre-existing ones.
 
 ## Troubleshooting
 

@@ -5,8 +5,11 @@ OpenAI's Codex CLI.
 
 ## Features
 
+- **Full Codebase Scan**: Review all git-tracked files with `--full` flag
 - **Plan Review**: Review Claude Code implementation plans before execution
 - **Code Review**: Review uncommitted code changes via git diff
+- **Branch Comparison**: Review commits between branches with `--base` flag
+- **Auto-Detection**: Automatically detects base branch (tracking > remote HEAD > origin/main)
 - **Second Opinion**: Consult Codex for independent perspective on technical decisions
 - **Autofix**: Automatically fix valid issues with `--auto` flag
 - **Principle Validation**: Validates feedback against DRY, KISS, YAGNI, SRP
@@ -17,8 +20,14 @@ OpenAI's Codex CLI.
 ## Quick Start
 
 ```bash
-# Review your uncommitted code changes
+# Scan entire codebase
+/codex-review:code --full
+
+# Review uncommitted changes
 /codex-review:code
+
+# Review commits on current branch vs main
+/codex-review:code --base main
 
 # Or just say in conversation:
 # "get a second opinion on my changes"
@@ -43,15 +52,31 @@ OpenAI's Codex CLI.
 ### Code Review
 
 ```bash
-# Review current directory
+# Scan entire codebase (all git-tracked files)
+/codex-review:code --full
+
+# Review uncommitted changes in current directory
 /codex-review:code
+
+# Review commits vs base branch
+/codex-review:code --base main
 
 # Review specific project
 /codex-review:code /path/to/project
 
 # Auto mode (no prompts, deletes previous, applies fixes)
 /codex-review:code --auto
+
+# Combine flags
+/codex-review:code --auto --base develop /path/to/project
 ```
+
+**Detection Priority:**
+
+1. Explicit `--full` (highest priority - scans all files)
+2. Explicit `--base <branch>`
+3. Uncommitted changes (staged + unstaged + untracked)
+4. Auto-detect base branch (tracking > remote HEAD > origin/main > origin/master)
 
 ### Second Opinion (Consultation)
 
@@ -117,11 +142,15 @@ Skills trigger automatically through conversation - no commands needed:
 
 ## Flags
 
-| Flag     | Effect                                                     |
-| -------- | ---------------------------------------------------------- |
-| `--auto` | Non-interactive mode: deletes previous results, no prompts |
+| Flag             | Effect                                                     |
+| ---------------- | ---------------------------------------------------------- |
+| `--auto`         | Non-interactive mode: deletes previous results, no prompts |
+| `--full`         | Scan all git-tracked files (may timeout on large repos)    |
+| `--base <branch>` | Compare current HEAD against specified branch              |
 
 For code reviews, `--auto` also enables autofix (applies fixes for valid issues).
+
+When `--base` is specified with uncommitted changes present, a warning is shown but the branch comparison proceeds (uncommitted changes are ignored).
 
 ## Workflow
 

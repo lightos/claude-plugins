@@ -87,7 +87,9 @@ Be specific and actionable. Assume I have context on the codebase.
 
 ### Step 2: Execute Codex Query
 
-Run the Codex CLI with the constructed prompt:
+Run the Codex CLI. Use a 10-minute timeout to accommodate extended reasoning:
+
+**When using Bash tool, specify:** `timeout: 600000` (10 minutes in ms)
 
 ```bash
 codex exec "YOUR_PROMPT_HERE"
