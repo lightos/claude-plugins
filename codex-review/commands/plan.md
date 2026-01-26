@@ -46,13 +46,18 @@ Use AskUserQuestion to let user select a plan from the list.
 
 ## Phase 2: Run Review Script
 
-Execute the plan review script:
+### Execution
+
+Run the script directly. Plan reviews typically complete within 10 minutes.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/scripts/plan-review.sh" [--auto] "[PLAN_PATH]"
 ```
 
-**Timeout:** Use `timeout: 600000` (10 minutes) when calling the Bash tool.
+If the script times out, inform the user that the plan may be very large
+and suggest running with --auto flag to skip prompts.
+
+The script runs with a 30-minute internal timeout (configurable via `CODEX_REVIEW_TIMEOUT_SECONDS`).
 
 ### Handle Script Output
 

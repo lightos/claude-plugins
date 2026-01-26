@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Configurable timeout (default 30 minutes)
+TIMEOUT_SECS="${CODEX_REVIEW_TIMEOUT_SECONDS:-1800}"
+
 # Check for codex CLI
 if ! command -v codex >/dev/null 2>&1; then
     echo "ERROR: codex CLI not found" >&2
@@ -12,7 +15,7 @@ fi
 # Usage error helper
 usage_error() {
     echo "ERROR: $1" >&2
-    echo "Usage: code-review.sh [--auto] [--full] [--base <branch>] [project-path]" >&2
+    echo "Usage: code-review.sh [--auto] [--full|--base <branch>|--commit <sha>|--range <sha>..<sha>] [project-path]" >&2
     exit 1
 }
 
@@ -20,6 +23,8 @@ usage_error() {
 AUTO=false
 FULL_SCAN=false
 BASE_BRANCH=""
+COMMIT_SHA=""
+RANGE_SPEC=""
 PROJECT_PATH=""
 PATH_SET=false
 
@@ -30,6 +35,13 @@ while [[ $# -gt 0 ]]; do
         --base)
             [[ -z "${2:-}" || "$2" == -* ]] && usage_error "--base requires a branch name"
             BASE_BRANCH="$2"; shift 2 ;;
+        --commit)
+            [[ -z "${2:-}" || "$2" == -* ]] && usage_error "--commit requires a SHA"
+            COMMIT_SHA="$2"; shift 2 ;;
+        --range)
+            [[ -z "${2:-}" || "$2" == -* ]] && usage_error "--range requires format: sha1..sha2"
+            [[ "$2" != *..* ]] && usage_error "--range requires format: sha1..sha2 or sha1...sha2"
+            RANGE_SPEC="$2"; shift 2 ;;
         -*)
             usage_error "Unknown option: $1"
             ;;
@@ -43,6 +55,14 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Check mutual exclusivity of review modes
+EXCLUSIVE_COUNT=0
+[[ "$FULL_SCAN" == "true" ]] && ((++EXCLUSIVE_COUNT))
+[[ -n "$BASE_BRANCH" ]] && ((++EXCLUSIVE_COUNT))
+[[ -n "$COMMIT_SHA" ]] && ((++EXCLUSIVE_COUNT))
+[[ -n "$RANGE_SPEC" ]] && ((++EXCLUSIVE_COUNT))
+[[ $EXCLUSIVE_COUNT -gt 1 ]] && usage_error "Only one of --full, --base, --commit, or --range can be specified"
 
 # Default to current directory if no path specified
 if [[ -z "$PROJECT_PATH" ]]; then
@@ -62,9 +82,9 @@ git -C "$PROJECT_PATH" rev-parse --is-inside-work-tree &>/dev/null || { echo "ER
 # Find timeout command (optional - graceful degradation)
 TIMEOUT_CMD=""
 if command -v timeout >/dev/null 2>&1; then
-    TIMEOUT_CMD="timeout 600"
+    TIMEOUT_CMD="timeout $TIMEOUT_SECS"
 elif command -v gtimeout >/dev/null 2>&1; then
-    TIMEOUT_CMD="gtimeout 600"
+    TIMEOUT_CMD="gtimeout $TIMEOUT_SECS"
 else
     echo "WARN: timeout command not found - review may hang on complex prompts" >&2
 fi
@@ -115,6 +135,26 @@ count_commits_ahead() {
     fi
 }
 
+# Helper: Validate commit SHA exists
+validate_commit() {
+    local sha="$1" resolved
+    if ! resolved=$(git -C "$PROJECT_PATH" rev-parse --verify --quiet "$sha^{commit}" 2>/dev/null); then
+        echo "ERROR: Commit '$sha' not found or ambiguous" >&2
+        return 1
+    fi
+    echo "$resolved"
+}
+
+# Helper: Check if commit is a merge (has >1 parent)
+is_merge_commit() {
+    [[ $(git -C "$PROJECT_PATH" rev-list --count --parents -n 1 "$1" | awk '{print NF-1}') -gt 1 ]]
+}
+
+# Helper: Check if diff is empty (handles set -e safely)
+diff_is_empty() {
+    git -C "$PROJECT_PATH" diff --quiet "$@" 2>/dev/null
+}
+
 # Determine review mode with 4-tier priority
 REVIEW_MODE=""
 
@@ -127,7 +167,46 @@ if [[ "$FULL_SCAN" == "true" ]]; then
         echo "WARNING: Uncommitted changes will be included in scan" >&2
     fi
 
-# Tier 1: Explicit --base
+# Tier 1: Single commit
+elif [[ -n "$COMMIT_SHA" ]]; then
+    RESOLVED=$(validate_commit "$COMMIT_SHA") || exit 1
+    COMMIT_SHA="$RESOLVED"
+    SHORT_SHA=$(git -C "$PROJECT_PATH" rev-parse --short "$COMMIT_SHA")
+    REVIEW_MODE="commit"
+    echo "MODE:commit:$SHORT_SHA" >&2
+    is_merge_commit "$COMMIT_SHA" && echo "WARNING: Merge commit - showing first-parent diff" >&2
+    has_uncommitted_changes && echo "WARNING: Uncommitted changes ignored (using --commit)" >&2
+
+# Tier 2: Commit range
+elif [[ -n "$RANGE_SPEC" ]]; then
+    # Parse range (supports .. and ...)
+    if [[ "$RANGE_SPEC" == *...* ]]; then
+        RANGE_START="${RANGE_SPEC%%...*}"
+        RANGE_END="${RANGE_SPEC##*...}"
+        RANGE_TYPE="..."
+    else
+        RANGE_START="${RANGE_SPEC%%.*}"
+        RANGE_END="${RANGE_SPEC##*..}"
+        RANGE_TYPE=".."
+    fi
+
+    START_RESOLVED=$(validate_commit "$RANGE_START") || exit 1
+    END_RESOLVED=$(validate_commit "$RANGE_END") || exit 1
+
+    # Check for empty diff
+    if diff_is_empty "${START_RESOLVED}${RANGE_TYPE}${END_RESOLVED}"; then
+        echo "ERROR:EMPTY_RANGE: No changes in range $RANGE_SPEC" >&2
+        exit 1
+    fi
+
+    REVIEW_MODE="range"
+    SHORT_START=$(git -C "$PROJECT_PATH" rev-parse --short "$START_RESOLVED")
+    SHORT_END=$(git -C "$PROJECT_PATH" rev-parse --short "$END_RESOLVED")
+    COMMIT_COUNT=$(git -C "$PROJECT_PATH" rev-list --count "${START_RESOLVED}..${END_RESOLVED}" 2>/dev/null || echo "?")
+    echo "MODE:range:${SHORT_START}${RANGE_TYPE}${SHORT_END} ($COMMIT_COUNT commits)" >&2
+    has_uncommitted_changes && echo "WARNING: Uncommitted changes ignored (using --range)" >&2
+
+# Tier 3: Explicit --base
 elif [[ -n "$BASE_BRANCH" ]]; then
     git -C "$PROJECT_PATH" rev-parse --verify "$BASE_BRANCH" &>/dev/null || \
         { echo "ERROR: Branch '$BASE_BRANCH' not found" >&2; exit 1; }
@@ -258,6 +337,42 @@ For each issue:
 - SUGGESTION: <fix>
 "
     fi
+elif [[ "$REVIEW_MODE" == "commit" ]]; then
+    COMMIT_MSG=$(git -C "$PROJECT_PATH" log -1 --format="%s" "$COMMIT_SHA")
+    REVIEW_PROMPT="Review changes from commit at: $PROJECT_PATH
+
+Commit: $COMMIT_SHA
+Message: $COMMIT_MSG
+
+Run 'git -C \"$PROJECT_PATH\" show --format=\"\" --patch \"$COMMIT_SHA\"' and analyze against:
+DRY, KISS, YAGNI, SRP, SOLID, Security, Performance
+
+For each issue:
+- FILE: <path>
+- LINE: <number>
+- SEVERITY: CRITICAL|HIGH|MEDIUM|LOW
+- CATEGORY: <principle>
+- ISSUE: <description>
+- SUGGESTION: <fix>
+"
+elif [[ "$REVIEW_MODE" == "range" ]]; then
+    DIFF_SPEC="${START_RESOLVED}${RANGE_TYPE}${END_RESOLVED}"
+    REVIEW_PROMPT="Review changes in commit range at: $PROJECT_PATH
+
+Range: $RANGE_SPEC ($COMMIT_COUNT commits)
+Syntax: ${RANGE_TYPE} $([ "$RANGE_TYPE" == "..." ] && echo "(merge-base to end)" || echo "(tree-to-tree)")
+
+Run 'git -C \"$PROJECT_PATH\" diff \"$DIFF_SPEC\"' and analyze against:
+DRY, KISS, YAGNI, SRP, SOLID, Security, Performance
+
+For each issue:
+- FILE: <path>
+- LINE: <number>
+- SEVERITY: CRITICAL|HIGH|MEDIUM|LOW
+- CATEGORY: <principle>
+- ISSUE: <description>
+- SUGGESTION: <fix>
+"
 else
     DIFF_CMD="git -C \"$PROJECT_PATH\" diff \"$BASE_BRANCH\"...HEAD"
     REVIEW_PROMPT="Review code changes at: $PROJECT_PATH
@@ -275,6 +390,10 @@ For each issue:
 "
 fi
 
+# Status file for polling (supports background execution)
+STATUS_FILE="${OUTPUT_FILE}.status"
+echo "running" > "$STATUS_FILE"
+
 # Run codex, capture both stdout AND stderr to file
 # Temporarily disable errexit to capture exit code reliably
 set +e
@@ -282,10 +401,11 @@ if [[ -n "$TIMEOUT_CMD" ]]; then
     $TIMEOUT_CMD codex exec "$REVIEW_PROMPT" > "$OUTPUT_FILE" 2>&1
     exit_code=$?
     if [[ $exit_code -eq 124 ]]; then
+        echo "timeout" > "$STATUS_FILE"
         if [[ "$REVIEW_MODE" == "full" ]]; then
-            echo "ERROR: Full codebase scan timed out. Try --base for incremental review." >&2
+            echo "ERROR: Full codebase scan timed out after ${TIMEOUT_SECS} seconds. Try --base for incremental review." >&2
         else
-            echo "ERROR: Codex timed out after 600 seconds" >&2
+            echo "ERROR: Codex timed out after ${TIMEOUT_SECS} seconds" >&2
         fi
         exit 1
     fi
@@ -297,9 +417,13 @@ set -e
 
 # Check for errors
 if [[ $exit_code -ne 0 ]]; then
+    echo "error:$exit_code" > "$STATUS_FILE"
     echo "ERROR: Codex failed (exit $exit_code). See $OUTPUT_FILE for details." >&2
     exit 1
 fi
+
+# Mark as done
+echo "done" > "$STATUS_FILE"
 
 # Only output the file path
 echo "$OUTPUT_FILE"

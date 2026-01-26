@@ -1,6 +1,6 @@
 ---
 description: Run Codex code review on codebase, uncommitted changes, or branch comparison
-argument-hint: "[--auto] [--full] [--base <branch>] [project-path]"
+argument-hint: "[--auto] [--full|--base <branch>|--commit <sha>|--range <sha>..<sha>] [project-path]"
 allowed-tools: ["Bash", "Read", "Task", "AskUserQuestion"]
 ---
 
@@ -18,6 +18,8 @@ Review code changes using OpenAI Codex as a second opinion.
 - `--auto`: Non-interactive mode. Deletes previous results, applies fixes, no prompts.
 - `--full`: Scan all git-tracked files (not just changes). May timeout on large codebases.
 - `--base <branch>`: Compare current HEAD against specified branch (e.g., `--base main`).
+- `--commit <sha>`: Review changes introduced by a specific commit.
+- `--range <sha1>..<sha2>`: Review changes in a commit range. Use `..` for tree-to-tree diff, `...` for PR-style (merge-base) diff.
 
 ---
 
@@ -30,13 +32,31 @@ Parse arguments:
 - If ARGUMENTS contains `--base <branch>`: set BASE_FLAG="--base \<branch\>"
 - Extract project path (default: current directory)
 
-Execute the code review script:
+### Execution Strategy
+
+**For standard reviews (default, --base, uncommitted):**
+Run the script directly. Most reviews complete within the Bash tool's 10-minute limit.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/scripts/code-review.sh" ${AUTO_FLAG} ${FULL_FLAG} ${BASE_FLAG} "${PROJECT_PATH:-.}"
+"${CLAUDE_PLUGIN_ROOT}/scripts/code-review.sh" ${AUTO_FLAG} ${BASE_FLAG} "${PROJECT_PATH:-.}"
 ```
 
-**Timeout:** Use `timeout: 600000` (10 minutes) when calling the Bash tool.
+**For full codebase scans (--full flag):**
+Full scans can exceed 10 minutes on large codebases. Run in background and inform user:
+
+```bash
+# Use run_in_background: true
+"${CLAUDE_PLUGIN_ROOT}/scripts/code-review.sh" --auto --full "${PROJECT_PATH:-.}"
+```
+
+After starting the background task, inform the user:
+> "Full codebase scan started in background. This may take 10-30 minutes.
+> Check back with 'check on my code review' or re-run this command to see results."
+
+Then **end your turn** - do NOT poll or use TaskOutput.
+When user checks back, look for existing results in `.codex-review/`.
+
+The script runs with a 30-minute internal timeout (configurable via `CODEX_REVIEW_TIMEOUT_SECONDS`).
 
 ### Handle Script Output
 
@@ -48,16 +68,23 @@ On success, the script (`code-review.sh`) outputs one of:
 The script also outputs status to stderr:
 
 - `MODE:full (<N> files)` - Scanning all git-tracked files
+- `MODE:commit:<sha>` - Reviewing single commit
+- `MODE:range:<sha1>..<sha2> (<N> commits)` - Reviewing commit range
 - `MODE:uncommitted` - Reviewing uncommitted changes
 - `MODE:base:<branch> (<N> commits)` - Reviewing commits vs base
 - `MODE:base:<branch> (<N> commits, auto-detected)` - Auto-detected base
 - `WARNING: Uncommitted changes will be included in scan` - When --full with dirty tree
+- `WARNING: Uncommitted changes ignored (using --commit)` - When --commit overrides
+- `WARNING: Uncommitted changes ignored (using --range)` - When --range overrides
 - `WARNING: Uncommitted changes exist but will be ignored` - When --base overrides
+- `WARNING: Merge commit - showing first-parent diff` - When --commit targets a merge
 
 On failure, the script writes error messages to stderr:
 
 - `ERROR:NO_CHANGES: <message>` - No changes to review
 - `ERROR:NO_BASE: <message>` - Could not detect base branch
+- `ERROR:EMPTY_RANGE: <message>` - No changes in specified range
+- `ERROR: Commit '<sha>' not found or ambiguous` - Invalid commit SHA
 - `ERROR: <message>` - General errors
 
 ### If ERROR:NO_CHANGES or ERROR:NO_BASE Response

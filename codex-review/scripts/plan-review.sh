@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Configurable timeout (default 30 minutes)
+TIMEOUT_SECS="${CODEX_REVIEW_TIMEOUT_SECONDS:-1800}"
+
 # Portable realpath function (macOS doesn't have realpath by default)
 portable_realpath() {
     local path="$1"
@@ -66,9 +69,9 @@ PLAN_BASENAME=$(basename "$PLAN_PATH" .md)
 # Find timeout command (optional - graceful degradation)
 TIMEOUT_CMD=""
 if command -v timeout >/dev/null 2>&1; then
-    TIMEOUT_CMD="timeout 600"
+    TIMEOUT_CMD="timeout $TIMEOUT_SECS"
 elif command -v gtimeout >/dev/null 2>&1; then
-    TIMEOUT_CMD="gtimeout 600"
+    TIMEOUT_CMD="gtimeout $TIMEOUT_SECS"
 else
     echo "WARN: timeout command not found - review may hang on complex prompts" >&2
 fi
@@ -128,6 +131,10 @@ For each issue:
 - SUGGESTION: <fix>
 "
 
+# Status file for polling (supports background execution)
+STATUS_FILE="${OUTPUT_FILE}.status"
+echo "running" > "$STATUS_FILE"
+
 # Run codex, capture both stdout AND stderr to file
 # Temporarily disable errexit to capture exit code reliably
 set +e
@@ -135,7 +142,8 @@ if [[ -n "$TIMEOUT_CMD" ]]; then
     $TIMEOUT_CMD codex exec "$REVIEW_PROMPT" > "$OUTPUT_FILE" 2>&1
     exit_code=$?
     if [[ $exit_code -eq 124 ]]; then
-        echo "ERROR: Codex timed out after 600 seconds" >&2
+        echo "timeout" > "$STATUS_FILE"
+        echo "ERROR: Codex timed out after ${TIMEOUT_SECS} seconds" >&2
         exit 1
     fi
 else
@@ -146,9 +154,13 @@ set -e
 
 # Check for errors
 if [[ $exit_code -ne 0 ]]; then
+    echo "error:$exit_code" > "$STATUS_FILE"
     echo "ERROR: Codex failed (exit $exit_code). See $OUTPUT_FILE for details." >&2
     exit 1
 fi
+
+# Mark as done
+echo "done" > "$STATUS_FILE"
 
 # Only output the file path
 echo "$OUTPUT_FILE"

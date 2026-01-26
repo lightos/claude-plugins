@@ -69,6 +69,9 @@ Get second-opinion reviews on Claude Code plans and code changes using OpenAI's 
 
 - Reviews implementation plans before execution
 - Reviews uncommitted code changes via git diff
+- Reviews commits vs base branch with `--base` flag
+- Reviews single commits with `--commit` flag
+- Reviews commit ranges with `--range` flag
 - Validates feedback against DRY, KISS, YAGNI, SRP, SOLID principles
 - Opus-powered validation filters Codex output for actionable insights
 - Auto-summon via natural language (see below)
@@ -76,10 +79,13 @@ Get second-opinion reviews on Claude Code plans and code changes using OpenAI's 
 **Usage:**
 
 ```bash
-/codex-review:code --full    # Scan all git-tracked files
-/codex-review:code           # Review uncommitted changes
-/codex-review:plan plan.md   # Review a plan file
-/codex-review:code --auto    # Auto mode: no prompts, applies fixes
+/codex-review:code --full           # Scan all git-tracked files
+/codex-review:code                  # Review uncommitted changes
+/codex-review:code --base main      # Review commits vs base branch
+/codex-review:code --commit abc123  # Review a specific commit
+/codex-review:code --range a..b     # Review commit range
+/codex-review:plan plan.md          # Review a plan file
+/codex-review:code --auto           # Auto mode: no prompts, applies fixes
 ```
 
 **Natural Language:** Say "get a second opinion on my changes" or "ask Codex about this approach" to trigger automatically.

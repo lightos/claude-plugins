@@ -9,6 +9,8 @@ OpenAI's Codex CLI.
 - **Plan Review**: Review Claude Code implementation plans before execution
 - **Code Review**: Review uncommitted code changes via git diff
 - **Branch Comparison**: Review commits between branches with `--base` flag
+- **Single Commit Review**: Review changes from a specific commit with `--commit` flag
+- **Commit Range Review**: Review changes across commit ranges with `--range` flag
 - **Auto-Detection**: Automatically detects base branch (tracking > remote HEAD > origin/main)
 - **Second Opinion**: Consult Codex for independent perspective on technical decisions
 - **Autofix**: Automatically fix valid issues with `--auto` flag
@@ -28,6 +30,12 @@ OpenAI's Codex CLI.
 
 # Review commits on current branch vs main
 /codex-review:code --base main
+
+# Review a specific commit
+/codex-review:code --commit abc1234
+
+# Review changes between commits (PR-style)
+/codex-review:code --range main...HEAD
 
 # Or just say in conversation:
 # "get a second opinion on my changes"
@@ -74,9 +82,11 @@ OpenAI's Codex CLI.
 **Detection Priority:**
 
 1. Explicit `--full` (highest priority - scans all files)
-2. Explicit `--base <branch>`
-3. Uncommitted changes (staged + unstaged + untracked)
-4. Auto-detect base branch (tracking > remote HEAD > origin/main > origin/master)
+2. Explicit `--commit <sha>`
+3. Explicit `--range <sha>..<sha>`
+4. Explicit `--base <branch>`
+5. Uncommitted changes (staged + unstaged + untracked)
+6. Auto-detect base branch (tracking > remote HEAD > origin/main > origin/master)
 
 ### Second Opinion (Consultation)
 
@@ -142,15 +152,53 @@ Skills trigger automatically through conversation - no commands needed:
 
 ## Flags
 
-| Flag             | Effect                                                     |
-| ---------------- | ---------------------------------------------------------- |
-| `--auto`         | Non-interactive mode: deletes previous results, no prompts |
-| `--full`         | Scan all git-tracked files (may timeout on large repos)    |
-| `--base <branch>` | Compare current HEAD against specified branch              |
+| Flag                | Effect                                                     |
+| ------------------- | ---------------------------------------------------------- |
+| `--auto`            | Non-interactive mode: deletes previous results, no prompts |
+| `--full`            | Scan all git-tracked files (may timeout on large repos)    |
+| `--base <branch>`   | Compare current HEAD against specified branch              |
+| `--commit <sha>`    | Review changes from a specific commit                      |
+| `--range <s>..<e>`  | Review commit range (`..` tree-diff, `...` PR-style)       |
 
 For code reviews, `--auto` also enables autofix (applies fixes for valid issues).
 
 When `--base` is specified with uncommitted changes present, a warning is shown but the branch comparison proceeds (uncommitted changes are ignored).
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `CODEX_REVIEW_TIMEOUT_SECONDS` | `1800` | Timeout for Codex CLI in seconds (default 30 minutes) |
+
+Example:
+
+```bash
+# Set a 1-hour timeout for large codebase scans
+export CODEX_REVIEW_TIMEOUT_SECONDS=3600
+/codex-review:code --full
+```
+
+### Execution Strategy
+
+- **Standard reviews**: Run directly (fits within 10-minute limit)
+- **Full codebase scans (--full)**: Run in background; user checks back for results
+- **Scripts write minimal output**: Only the result file path is printed
+- **Status files**: `.status` files track running/done/timeout/error for debugging
+
+| Status | Meaning |
+| ------ | ------- |
+| `running` | Review in progress |
+| `done` | Review completed successfully |
+| `timeout` | Codex timed out |
+| `error:N` | Codex failed with exit code N |
+
+To check status manually (for debugging only):
+
+```bash
+cat .codex-review/code-review-*.status | tail -1
+```
 
 ## Workflow
 

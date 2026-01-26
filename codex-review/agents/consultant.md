@@ -87,15 +87,29 @@ Be specific and actionable. Assume I have context on the codebase.
 
 ### Step 2: Execute Codex Query
 
-Run the Codex CLI. Use a 10-minute timeout to accommodate extended reasoning:
-
-**When using Bash tool, specify:** `timeout: 600000` (10 minutes in ms)
+Run the Codex CLI with an inner timeout (default 30 minutes, configurable via
+`CODEX_REVIEW_TIMEOUT_SECONDS` env var). Consultant queries are typically fast
+and run directly (no background execution needed).
 
 ```bash
-codex exec "YOUR_PROMPT_HERE"
+# Cross-platform timeout detection
+TIMEOUT_SECS="${CODEX_REVIEW_TIMEOUT_SECONDS:-1800}"
+TIMEOUT_CMD=""
+if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="timeout $TIMEOUT_SECS"
+elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="gtimeout $TIMEOUT_SECS"
+fi
+
+# Run with timeout if available
+if [[ -n "$TIMEOUT_CMD" ]]; then
+    $TIMEOUT_CMD codex exec "YOUR_PROMPT_HERE"
+else
+    codex exec "YOUR_PROMPT_HERE"
+fi
 ```
 
-Capture the full output.
+Capture the full output. If exit code is 124, Codex timed out.
 
 ### Step 3: Save Output
 
