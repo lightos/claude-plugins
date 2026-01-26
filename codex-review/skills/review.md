@@ -1,6 +1,6 @@
 ---
 name: review
-description: Use when the user wants a second opinion on code changes, wants to validate a plan, or mentions reviewing uncommitted changes with an external tool
+description: Use when the user wants a second opinion on code changes, wants to validate a plan, mentions reviewing uncommitted changes with an external tool, or wants to review a GitHub Pull Request
 ---
 
 # Codex Review Skill
@@ -16,6 +16,7 @@ Trigger this skill when the user:
 - Asks for external validation of their work
 - Wants to check their implementation plan before proceeding
 - Mentions Codex review or code review
+- Wants to review a GitHub Pull Request
 
 ## Determine Review Type
 
@@ -41,6 +42,18 @@ Use when the user:
 
 **Run:** `/codex-review:plan` command
 
+### Pull Request Review
+
+Use when the user:
+
+- Mentions a PR number (e.g., "review PR #123", "check PR 45")
+- Asks for a pull request review
+- Mentions "review this PR" or similar
+
+**Run:** `/codex-review:code --pr <number>` command
+
+Extract the PR number from the user's message and pass it to the command.
+
 ## Clarification
 
 If unclear which type the user needs, ask:
@@ -52,6 +65,8 @@ AskUserQuestion:
   options:
     - label: "Code changes"
       description: "Review uncommitted git changes"
+    - label: "Pull Request"
+      description: "Review a GitHub PR by number"
     - label: "Implementation plan"
       description: "Review a plan file before implementation"
 ```

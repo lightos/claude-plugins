@@ -1,6 +1,6 @@
 ---
-description: Run Codex code review on codebase, uncommitted changes, or branch comparison
-argument-hint: "[--auto] [--full|--base <branch>|--commit <sha>|--range <sha>..<sha>] [project-path]"
+description: Run Codex code review on codebase, uncommitted changes, branch comparison, or GitHub PR
+argument-hint: "[--auto] [--full|--base <branch>|--commit <sha>|--range <sha>..<sha>|--pr [number]] [project-path]"
 allowed-tools: ["Bash", "Read", "Task", "AskUserQuestion"]
 ---
 
@@ -12,6 +12,7 @@ Review code changes using OpenAI Codex as a second opinion.
 
 - `codex` CLI must be installed and authenticated
 - Target directory must be a git repository
+- For PR reviews: `gh` CLI installed and authenticated (`gh auth login`)
 
 ## Flags
 
@@ -20,6 +21,7 @@ Review code changes using OpenAI Codex as a second opinion.
 - `--base <branch>`: Compare current HEAD against specified branch (e.g., `--base main`).
 - `--commit <sha>`: Review changes introduced by a specific commit.
 - `--range <sha1>..<sha2>`: Review changes in a commit range. Use `..` for tree-to-tree diff, `...` for PR-style (merge-base) diff.
+- `--pr [number]`: Review a GitHub Pull Request by number. If no number provided, lists recent PRs for interactive selection. Requires `gh` CLI authenticated.
 
 ---
 
@@ -30,6 +32,10 @@ Parse arguments:
 - If ARGUMENTS contains `--auto`: set AUTO_FLAG="--auto"
 - If ARGUMENTS contains `--full`: set FULL_FLAG="--full"
 - If ARGUMENTS contains `--base <branch>`: set BASE_FLAG="--base \<branch\>"
+- If ARGUMENTS contains `--commit <sha>`: set COMMIT_FLAG="--commit \<sha\>"
+- If ARGUMENTS contains `--range <sha>..<sha>`: set RANGE_FLAG="--range \<range\>"
+- If ARGUMENTS contains `--pr <N>`: set PR_FLAG="--pr \<N\>"
+- If ARGUMENTS contains `--pr` without number: set PR_FLAG="--pr"
 - Extract project path (default: current directory)
 
 ### Execution Strategy
@@ -73,11 +79,16 @@ The script also outputs status to stderr:
 - `MODE:uncommitted` - Reviewing uncommitted changes
 - `MODE:base:<branch> (<N> commits)` - Reviewing commits vs base
 - `MODE:base:<branch> (<N> commits, auto-detected)` - Auto-detected base
+- `MODE:pr:#<number> (<N> files, +A/-D)` - Reviewing Pull Request
+- `SELECT_PR:` - Interactive PR selection needed (script exits 0)
 - `WARNING: Uncommitted changes will be included in scan` - When --full with dirty tree
 - `WARNING: Uncommitted changes ignored (using --commit)` - When --commit overrides
 - `WARNING: Uncommitted changes ignored (using --range)` - When --range overrides
+- `WARNING: Uncommitted changes ignored (using --pr)` - When --pr overrides
 - `WARNING: Uncommitted changes exist but will be ignored` - When --base overrides
 - `WARNING: Merge commit - showing first-parent diff` - When --commit targets a merge
+- `WARNING: PR is CLOSED` or `WARNING: PR is MERGED` - PR state warning
+- `INFO: PR is from a fork` - PR is from a forked repository
 
 On failure, the script writes error messages to stderr:
 
@@ -85,6 +96,10 @@ On failure, the script writes error messages to stderr:
 - `ERROR:NO_BASE: <message>` - Could not detect base branch
 - `ERROR:EMPTY_RANGE: <message>` - No changes in specified range
 - `ERROR: Commit '<sha>' not found or ambiguous` - Invalid commit SHA
+- `ERROR: PR #<number> not found or inaccessible` - PR doesn't exist or no access
+- `ERROR: gh CLI not found` - GitHub CLI not installed
+- `ERROR: gh CLI not authenticated` - Need to run `gh auth login`
+- `ERROR: Failed to get PR diff` - Could not retrieve PR diff
 - `ERROR: <message>` - General errors
 
 ### If ERROR:NO_CHANGES or ERROR:NO_BASE Response
@@ -125,6 +140,28 @@ AskUserQuestion:
 If "Use existing results": Use the EXISTS path as the Codex output
 If "Delete and re-run": Delete the file, then re-run script with --auto
 If "Abort": Stop and inform user
+
+### If SELECT_PR Response
+
+The script outputs `SELECT_PR:` when `--pr` is used without a number. Run the list-prs script to get recent PRs:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/scripts/list-prs.sh" "${PROJECT_PATH:-.}"
+```
+
+Then use AskUserQuestion to let user select a PR:
+
+```yaml
+AskUserQuestion:
+  question: "Which Pull Request would you like to review?"
+  header: "Select PR"
+  options:
+    - label: "#123 [OPEN] feature-branch: Add new feature"
+      description: "Review PR #123"
+    # ... (generate from list-prs.sh output, up to 4 options)
+```
+
+Extract the PR number from selection (e.g., "#123" → "123") and re-run the script with `--pr <number>`.
 
 ---
 

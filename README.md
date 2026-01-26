@@ -72,6 +72,7 @@ Get second-opinion reviews on Claude Code plans and code changes using OpenAI's 
 - Reviews commits vs base branch with `--base` flag
 - Reviews single commits with `--commit` flag
 - Reviews commit ranges with `--range` flag
+- Reviews GitHub Pull Requests with `--pr` flag (interactive selection or by number)
 - Validates feedback against DRY, KISS, YAGNI, SRP, SOLID principles
 - Opus-powered validation filters Codex output for actionable insights
 - Auto-summon via natural language (see below)
@@ -84,6 +85,8 @@ Get second-opinion reviews on Claude Code plans and code changes using OpenAI's 
 /codex-review:code --base main      # Review commits vs base branch
 /codex-review:code --commit abc123  # Review a specific commit
 /codex-review:code --range a..b     # Review commit range
+/codex-review:code --pr 123         # Review a GitHub PR by number
+/codex-review:code --pr             # Interactive PR selection
 /codex-review:plan plan.md          # Review a plan file
 /codex-review:code --auto           # Auto mode: no prompts, applies fixes
 ```
@@ -140,6 +143,7 @@ ln -s /path/to/claude-plugins/coderabbit-fix /your/project/.claude/plugins/coder
 ### For codex-review
 
 - [Codex CLI](https://github.com/openai/codex): `npm install -g @openai/codex` then `codex auth`
+- For PR reviews: [GitHub CLI](https://cli.github.com/) authenticated with `gh auth login`
 
 <details>
 <summary><strong>macOS Users</strong></summary>

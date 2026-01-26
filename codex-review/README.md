@@ -8,6 +8,7 @@ OpenAI's Codex CLI.
 - **Full Codebase Scan**: Review all git-tracked files with `--full` flag
 - **Plan Review**: Review Claude Code implementation plans before execution
 - **Code Review**: Review uncommitted code changes via git diff
+- **Pull Request Review**: Review GitHub PRs by number with `--pr` flag (supports forks, interactive selection)
 - **Branch Comparison**: Review commits between branches with `--base` flag
 - **Single Commit Review**: Review changes from a specific commit with `--commit` flag
 - **Commit Range Review**: Review changes across commit ranges with `--range` flag
@@ -36,6 +37,12 @@ OpenAI's Codex CLI.
 
 # Review changes between commits (PR-style)
 /codex-review:code --range main...HEAD
+
+# Review a GitHub Pull Request
+/codex-review:code --pr 123
+
+# Interactive PR selection (lists recent PRs)
+/codex-review:code --pr
 
 # Or just say in conversation:
 # "get a second opinion on my changes"
@@ -84,9 +91,10 @@ OpenAI's Codex CLI.
 1. Explicit `--full` (highest priority - scans all files)
 2. Explicit `--commit <sha>`
 3. Explicit `--range <sha>..<sha>`
-4. Explicit `--base <branch>`
-5. Uncommitted changes (staged + unstaged + untracked)
-6. Auto-detect base branch (tracking > remote HEAD > origin/main > origin/master)
+4. Explicit `--pr <number>`
+5. Explicit `--base <branch>`
+6. Uncommitted changes (staged + unstaged + untracked)
+7. Auto-detect base branch (tracking > remote HEAD > origin/main > origin/master)
 
 ### Second Opinion (Consultation)
 
@@ -152,13 +160,14 @@ Skills trigger automatically through conversation - no commands needed:
 
 ## Flags
 
-| Flag                | Effect                                                     |
-| ------------------- | ---------------------------------------------------------- |
-| `--auto`            | Non-interactive mode: deletes previous results, no prompts |
-| `--full`            | Scan all git-tracked files (may timeout on large repos)    |
-| `--base <branch>`   | Compare current HEAD against specified branch              |
-| `--commit <sha>`    | Review changes from a specific commit                      |
-| `--range <s>..<e>`  | Review commit range (`..` tree-diff, `...` PR-style)       |
+| Flag                | Effect                                                                     |
+| ------------------- | -------------------------------------------------------------------------- |
+| `--auto`            | Non-interactive mode: deletes previous results, no prompts                 |
+| `--full`            | Scan all git-tracked files (may timeout on large repos)                    |
+| `--base <branch>`   | Compare current HEAD against specified branch                              |
+| `--commit <sha>`    | Review changes from a specific commit                                      |
+| `--range <s>..<e>`  | Review commit range (`..` tree-diff, `...` PR-style)                       |
+| `--pr [number]`     | Review a GitHub PR by number, or select interactively (requires `gh` CLI)  |
 
 For code reviews, `--auto` also enables autofix (applies fixes for valid issues).
 
@@ -287,6 +296,7 @@ The issue-handler agent evaluates Codex feedback against:
 - **Codex CLI**: Install with `npm install -g @openai/codex`
 - **Authentication**: Run `codex auth` to authenticate
 - **Git**: For code reviews, must be in a git repository
+- **For PR reviews**: [GitHub CLI](https://cli.github.com/) authenticated with `gh auth login`
 
 ## Installation
 
@@ -310,6 +320,7 @@ Or add to your Claude Code plugin configuration.
 - `scripts/code-review.sh` - Runs Codex code review with project path
 - `scripts/plan-review.sh` - Runs Codex plan review
 - `scripts/list-plans.sh` - Lists recent Claude Code plan files
+- `scripts/list-prs.sh` - Lists recent GitHub PRs for interactive selection
 
 ### Agents
 

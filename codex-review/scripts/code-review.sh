@@ -15,7 +15,7 @@ fi
 # Usage error helper
 usage_error() {
     echo "ERROR: $1" >&2
-    echo "Usage: code-review.sh [--auto] [--full|--base <branch>|--commit <sha>|--range <sha>..<sha>] [project-path]" >&2
+    echo "Usage: code-review.sh [--auto] [--full|--base <branch>|--commit <sha>|--range <sha>..<sha>|--pr [number]] [project-path]" >&2
     exit 1
 }
 
@@ -25,6 +25,7 @@ FULL_SCAN=false
 BASE_BRANCH=""
 COMMIT_SHA=""
 RANGE_SPEC=""
+PR_NUMBER=""
 PROJECT_PATH=""
 PATH_SET=false
 
@@ -42,6 +43,18 @@ while [[ $# -gt 0 ]]; do
             [[ -z "${2:-}" || "$2" == -* ]] && usage_error "--range requires format: sha1..sha2"
             [[ "$2" != *..* ]] && usage_error "--range requires format: sha1..sha2 or sha1...sha2"
             RANGE_SPEC="$2"; shift 2 ;;
+        --pr)
+            # Allow --pr without number (interactive selection handled by command)
+            if [[ -z "${2:-}" || "$2" == -* ]]; then
+                PR_NUMBER="SELECT"  # Sentinel value for interactive selection
+                shift
+            elif [[ ! "$2" =~ ^[0-9]+$ ]]; then
+                usage_error "--pr requires a numeric PR number or no argument for interactive selection"
+            else
+                PR_NUMBER="$2"
+                shift 2
+            fi
+            ;;
         -*)
             usage_error "Unknown option: $1"
             ;;
@@ -62,7 +75,8 @@ EXCLUSIVE_COUNT=0
 [[ -n "$BASE_BRANCH" ]] && ((++EXCLUSIVE_COUNT))
 [[ -n "$COMMIT_SHA" ]] && ((++EXCLUSIVE_COUNT))
 [[ -n "$RANGE_SPEC" ]] && ((++EXCLUSIVE_COUNT))
-[[ $EXCLUSIVE_COUNT -gt 1 ]] && usage_error "Only one of --full, --base, --commit, or --range can be specified"
+[[ -n "$PR_NUMBER" ]] && ((++EXCLUSIVE_COUNT))
+[[ $EXCLUSIVE_COUNT -gt 1 ]] && usage_error "Only one of --full, --base, --commit, --range, or --pr can be specified"
 
 # Default to current directory if no path specified
 if [[ -z "$PROJECT_PATH" ]]; then
@@ -78,6 +92,28 @@ PROJECT_PATH=$(cd "$PROJECT_PATH" && pwd)
 
 # Validate git repository
 git -C "$PROJECT_PATH" rev-parse --is-inside-work-tree &>/dev/null || { echo "ERROR: Not a git repo" >&2; exit 1; }
+
+# Check for gh CLI (only if --pr is used) - after path validation
+if [[ -n "$PR_NUMBER" ]]; then
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "ERROR: gh CLI not found (required for --pr)" >&2
+        echo "Install from: https://cli.github.com/" >&2
+        exit 1
+    fi
+    if ! (cd "$PROJECT_PATH" && gh auth status &>/dev/null); then
+        echo "ERROR: gh CLI not authenticated. Run: gh auth login" >&2
+        exit 1
+    fi
+
+    # Handle interactive selection request (error if --auto since it requires non-interactive)
+    if [[ "$PR_NUMBER" == "SELECT" ]]; then
+        if [[ "$AUTO" == "true" ]]; then
+            usage_error "--auto requires a PR number (e.g., --pr 123)"
+        fi
+        echo "SELECT_PR:"
+        exit 0
+    fi
+fi
 
 # Find timeout command (optional - graceful degradation)
 TIMEOUT_CMD=""
@@ -206,7 +242,30 @@ elif [[ -n "$RANGE_SPEC" ]]; then
     echo "MODE:range:${SHORT_START}${RANGE_TYPE}${SHORT_END} ($COMMIT_COUNT commits)" >&2
     has_uncommitted_changes && echo "WARNING: Uncommitted changes ignored (using --range)" >&2
 
-# Tier 3: Explicit --base
+# Tier 3: Pull Request
+elif [[ -n "$PR_NUMBER" ]]; then
+    # Fetch all PR metadata in a single API call (run gh in repo context)
+    PR_DATA=$(cd "$PROJECT_PATH" && gh pr view "$PR_NUMBER" \
+        --json title,state,baseRefName,headRefName,isCrossRepository,additions,deletions,changedFiles,body \
+        --jq '[.title, .state, .baseRefName, .headRefName, (.isCrossRepository | tostring), (.additions | tostring), (.deletions | tostring), (.changedFiles | tostring)] | @tsv') || {
+        echo "ERROR: PR #$PR_NUMBER not found or inaccessible" >&2
+        exit 1
+    }
+
+    # Parse tab-separated fields (body handled separately due to newlines)
+    IFS=$'\t' read -r PR_TITLE PR_STATE PR_BASE PR_HEAD PR_IS_FORK PR_ADDITIONS PR_DELETIONS PR_FILES <<< "$PR_DATA"
+    # Get body separately since it can contain tabs/newlines
+    PR_BODY=$(cd "$PROJECT_PATH" && gh pr view "$PR_NUMBER" --json body --jq '.body // ""')
+
+    REVIEW_MODE="pr"
+    echo "MODE:pr:#$PR_NUMBER ($PR_FILES files, +$PR_ADDITIONS/-$PR_DELETIONS)" >&2
+
+    # Warnings
+    [[ "$PR_STATE" != "OPEN" ]] && echo "WARNING: PR is $PR_STATE" >&2
+    [[ "$PR_IS_FORK" == "true" ]] && echo "INFO: PR is from a fork" >&2
+    has_uncommitted_changes && echo "WARNING: Uncommitted changes ignored (using --pr)" >&2
+
+# Tier 4: Explicit --base
 elif [[ -n "$BASE_BRANCH" ]]; then
     git -C "$PROJECT_PATH" rev-parse --verify "$BASE_BRANCH" &>/dev/null || \
         { echo "ERROR: Branch '$BASE_BRANCH' not found" >&2; exit 1; }
@@ -363,6 +422,42 @@ Range: $RANGE_SPEC ($COMMIT_COUNT commits)
 Syntax: ${RANGE_TYPE} $([ "$RANGE_TYPE" == "..." ] && echo "(merge-base to end)" || echo "(tree-to-tree)")
 
 Run 'git -C \"$PROJECT_PATH\" diff \"$DIFF_SPEC\"' and analyze against:
+DRY, KISS, YAGNI, SRP, SOLID, Security, Performance
+
+For each issue:
+- FILE: <path>
+- LINE: <number>
+- SEVERITY: CRITICAL|HIGH|MEDIUM|LOW
+- CATEGORY: <principle>
+- ISSUE: <description>
+- SUGGESTION: <fix>
+"
+elif [[ "$REVIEW_MODE" == "pr" ]]; then
+    # Get PR diff and save to temp file for Codex to read
+    PR_DIFF_FILE=$(mktemp)
+    # Set up trap for guaranteed cleanup on exit/error/interrupt
+    trap 'rm -f "$PR_DIFF_FILE"' EXIT
+
+    (cd "$PROJECT_PATH" && gh pr diff "$PR_NUMBER") > "$PR_DIFF_FILE" || {
+        echo "ERROR: Failed to get PR diff" >&2
+        exit 1
+    }
+
+    # PR_BODY already extracted in detection phase
+
+    REVIEW_PROMPT="Review Pull Request #$PR_NUMBER at: $PROJECT_PATH
+
+Title: $PR_TITLE
+Base: $PR_BASE <- Head: $PR_HEAD
+Changes: $PR_FILES files, +$PR_ADDITIONS/-$PR_DELETIONS
+
+$([ -n "$PR_BODY" ] && echo "Description:
+$PR_BODY
+")
+The PR diff is saved at: $PR_DIFF_FILE
+Read it with: cat \"$PR_DIFF_FILE\"
+
+Analyze the changes against:
 DRY, KISS, YAGNI, SRP, SOLID, Security, Performance
 
 For each issue:
