@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # generate-report.sh - Generate CodeRabbit fix summary report
 # Parses META lines from issue files AND cluster files, joins with issues.json,
 # writes full report and prints compact summary to stdout
