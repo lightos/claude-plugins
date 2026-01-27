@@ -1,5 +1,8 @@
 # Claude Plugins
 
+[![CodeRabbit Reviews](https://img.shields.io/coderabbit/prs/github/lightos/claude-plugins?labelColor=171717&color=FF570A&label=CodeRabbit+Reviews)](https://coderabbit.ai)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A collection of plugins for [Claude Code](https://claude.com/claude-code) that extend the CLI with code review, linting, and automated fixing capabilities.
 
 ## Quick Start
