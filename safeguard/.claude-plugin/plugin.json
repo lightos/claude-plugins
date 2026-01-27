@@ -1,0 +1,8 @@
+{
+  "name": "safeguard",
+  "version": "1.0.0",
+  "description": "Blocks dangerous bash commands with category-based protection and one-time bypass mechanism",
+  "author": "Claude Plugins Contributors",
+  "license": "MIT",
+  "repository": "https://github.com/anthropics/claude-plugins"
+}
