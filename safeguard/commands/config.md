@@ -1,5 +1,4 @@
 ---
-name: config
 description: Configure safeguard protection categories interactively
 ---
 

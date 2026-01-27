@@ -1,5 +1,4 @@
 ---
-name: allow-dangerous
 description: One-time bypass for the next dangerous command in a specific category
 arguments:
   - name: category
