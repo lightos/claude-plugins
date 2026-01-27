@@ -22,8 +22,12 @@ protection and one-time bypass mechanism.
 ### Install Plugin
 
 ```bash
-# Add to your Claude Code plugins
-claude /plugin add /path/to/safeguard
+# Via marketplace (recommended)
+/plugin marketplace add https://github.com/lightos/claude-plugins
+/plugin install safeguard@cc-plugins
+
+# Or via plugin directory flag
+claude --plugin-dir /path/to/safeguard
 ```
 
 ## Protection Categories

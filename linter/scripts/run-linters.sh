@@ -80,14 +80,11 @@ get_files_for_linter() {
     elif [[ "$accepts_dirs" == "true" ]]; then
         printf '%s\0' "."
     else
-        # Build extension list and get files
-        local extensions_str=""
-        for ext in $(echo "$file_types" | jq -r '.[]'); do
-            extensions_str="${extensions_str}*.${ext} "
-        done
+        # Loop per-extension with quoted patterns to prevent shell glob expansion
         if git rev-parse --git-dir &>/dev/null; then
-            # shellcheck disable=SC2086
-            git ls-files -z $extensions_str 2>/dev/null
+            for ext in $(echo "$file_types" | jq -r '.[]'); do
+                git ls-files -z "*.${ext}" 2>/dev/null
+            done
         else
             # Fallback find with pruning
             for ext in $(echo "$file_types" | jq -r '.[]'); do
@@ -98,36 +95,37 @@ get_files_for_linter() {
     fi
 }
 
-# Count issues from linter output (prefers JSON parsing when available)
-count_issues() {
-    local output="$1"
+# Count issues from linter output file (prefers JSON parsing when available)
+# Args: $1=output_file, $2=json_flag, $3=linter_name
+count_issues_from_file() {
+    local output_file="$1"
     local json_flag="$2"
     local linter="$3"
 
     # If JSON output flag is available, try to parse structured output
-    if [[ -n "$json_flag" ]] && echo "$output" | jq -e . &>/dev/null; then
+    if [[ -n "$json_flag" ]] && jq -e . "$output_file" &>/dev/null; then
         # Linter-specific JSON parsing
         case "$linter" in
             eslint)
                 # ESLint JSON: array of {filePath, messages: [...]}
-                echo "$output" | jq '[.[].messages | length] | add // 0' 2>/dev/null && return
+                jq '[.[].messages | length] | add // 0' "$output_file" 2>/dev/null && return
                 ;;
             biome)
                 # Biome JSON: {diagnostics: [...]}
-                echo "$output" | jq '.diagnostics | length // 0' 2>/dev/null && return
+                jq '.diagnostics | length // 0' "$output_file" 2>/dev/null && return
                 ;;
             shellcheck)
                 # ShellCheck JSON: array of {file, line, ...}
-                echo "$output" | jq 'length // 0' 2>/dev/null && return
+                jq 'length // 0' "$output_file" 2>/dev/null && return
                 ;;
             ruff|pylint)
                 # Ruff/Pylint JSON: array of issue objects
-                echo "$output" | jq 'length // 0' 2>/dev/null && return
+                jq 'length // 0' "$output_file" 2>/dev/null && return
                 ;;
             *)
                 # Generic: try to count array length or object count
                 local count
-                count=$(echo "$output" | jq 'if type == "array" then length elif type == "object" and has("errors") then (.errors | length) else 0 end' 2>/dev/null)
+                count=$(jq 'if type == "array" then length elif type == "object" and has("errors") then (.errors | length) else 0 end' "$output_file" 2>/dev/null)
                 if [[ -n "$count" ]] && [[ "$count" =~ ^[0-9]+$ ]]; then
                     echo "$count"
                     return
@@ -138,7 +136,7 @@ count_issues() {
 
     # Fallback: count lines matching error/warning patterns (one match per line)
     local count
-    count=$(echo "$output" | grep -cE '(error|warning|Error|Warning|E[0-9]{3,4}|W[0-9]{3,4})' || true)
+    count=$(grep -cE '(error|warning|Error|Warning|E[0-9]{3,4}|W[0-9]{3,4})' "$output_file" || true)
     echo "${count:-0}"
 }
 
@@ -160,9 +158,11 @@ TOTAL_ISSUES=0
 FIXED_COUNT=0
 UNFIXABLE_COUNT=0
 
-# Create temp file for NUL-delimited file lists (command substitution strips NULs)
+# Create temp files for NUL-delimited file lists and linter output
+# (command substitution strips NULs, and large output can exhaust memory)
 FILES_TMP=$(mktemp)
-trap 'rm -f "$FILES_TMP"' EXIT INT TERM HUP
+LINTER_OUTPUT_TMP=$(mktemp)
+trap 'rm -f "$FILES_TMP" "$LINTER_OUTPUT_TMP"' EXIT INT TERM HUP
 
 while IFS= read -r line; do
     # Skip non-linter lines (conflicts, summaries have explicit .type field).
@@ -212,14 +212,14 @@ while IFS= read -r line; do
     exit_code=0
     remaining_exit=0
 
-    # Capture output - run command with files
+    # Stream output to temp file to avoid memory exhaustion with large output
     if [[ "$accepts_dirs" == "true" ]]; then
         # shellcheck disable=SC2086
-        linter_output=$($cmd . 2>&1) || exit_code=$?
+        $cmd . >"$LINTER_OUTPUT_TMP" 2>&1 || exit_code=$?
     else
         # Pass files as arguments using NUL-safe xargs with -- to prevent option injection
         # shellcheck disable=SC2086
-        linter_output=$(xargs -0 $cmd -- < "$FILES_TMP" 2>&1) || exit_code=$?
+        xargs -0 $cmd -- < "$FILES_TMP" >"$LINTER_OUTPUT_TMP" 2>&1 || exit_code=$?
     fi
 
     end_time=$(date +%s)
@@ -232,8 +232,8 @@ while IFS= read -r line; do
     if [[ $exit_code -eq 0 ]]; then
         output_result "{\"type\":\"success\",\"linter\":\"$linter_id\",\"duration\":$duration,\"issues\":0}"
     else
-        # Count issues using JSON parsing when available, fallback to regex heuristic
-        issue_count=$(count_issues "$linter_output" "$json_output_flag" "$linter_id")
+        # Count issues from file using JSON parsing when available, fallback to regex heuristic
+        issue_count=$(count_issues_from_file "$LINTER_OUTPUT_TMP" "$json_output_flag" "$linter_id")
         [[ -z "$issue_count" ]] && issue_count=0
 
         # Track total issues in all modes
@@ -247,28 +247,42 @@ while IFS= read -r line; do
             remaining_exit=0
             if [[ "$accepts_dirs" == "true" ]]; then
                 # shellcheck disable=SC2086
-                remaining_output=$($check_cmd . 2>&1) || remaining_exit=$?
+                $check_cmd . >"$LINTER_OUTPUT_TMP" 2>&1 || remaining_exit=$?
             else
                 # shellcheck disable=SC2086
-                remaining_output=$(xargs -0 $check_cmd -- < "$FILES_TMP" 2>&1) || remaining_exit=$?
+                xargs -0 $check_cmd -- < "$FILES_TMP" >"$LINTER_OUTPUT_TMP" 2>&1 || remaining_exit=$?
             fi
 
             if [[ $remaining_exit -eq 0 ]]; then
                 output_result "{\"type\":\"fixed\",\"linter\":\"$linter_id\",\"duration\":$duration,\"fixed_count\":$issue_count}"
                 FIXED_COUNT=$((FIXED_COUNT + issue_count))
             else
-                remaining_count=$(count_issues "$remaining_output" "$json_output_flag" "$linter_id")
+                remaining_count=$(count_issues_from_file "$LINTER_OUTPUT_TMP" "$json_output_flag" "$linter_id")
                 [[ -z "$remaining_count" ]] && remaining_count=0
                 fixed=$((issue_count - remaining_count))
                 [[ $fixed -lt 0 ]] && fixed=0
 
-                output_result "{\"type\":\"partial\",\"linter\":\"$linter_id\",\"duration\":$duration,\"fixed\":$fixed,\"remaining\":$remaining_count,\"output\":$(echo "$remaining_output" | head -100 | jq -Rs .)}"
+                # Extract bounded excerpt for JSON output with truncation indicator
+                total_lines=$(wc -l < "$LINTER_OUTPUT_TMP")
+                linter_excerpt=$(head -100 "$LINTER_OUTPUT_TMP")
+                truncated="false"
+                if [[ $total_lines -gt 100 ]]; then
+                    truncated="true"
+                fi
+                output_result "{\"type\":\"partial\",\"linter\":\"$linter_id\",\"duration\":$duration,\"fixed\":$fixed,\"remaining\":$remaining_count,\"truncated\":$truncated,\"output\":$(echo "$linter_excerpt" | jq -Rs .)}"
                 FIXED_COUNT=$((FIXED_COUNT + fixed))
                 UNFIXABLE_COUNT=$((UNFIXABLE_COUNT + remaining_count))
             fi
         else
             # Report only mode or linter doesn't support fix
-            output_result "{\"type\":\"issues\",\"linter\":\"$linter_id\",\"duration\":$duration,\"count\":$issue_count,\"supports_fix\":$supports_fix,\"output\":$(echo "$linter_output" | head -100 | jq -Rs .)}"
+            # Extract bounded excerpt for JSON output with truncation indicator
+            total_lines=$(wc -l < "$LINTER_OUTPUT_TMP")
+            linter_excerpt=$(head -100 "$LINTER_OUTPUT_TMP")
+            truncated="false"
+            if [[ $total_lines -gt 100 ]]; then
+                truncated="true"
+            fi
+            output_result "{\"type\":\"issues\",\"linter\":\"$linter_id\",\"duration\":$duration,\"count\":$issue_count,\"supports_fix\":$supports_fix,\"truncated\":$truncated,\"output\":$(echo "$linter_excerpt" | jq -Rs .)}"
 
             if [[ "$supports_fix" == "false" ]]; then
                 UNFIXABLE_COUNT=$((UNFIXABLE_COUNT + issue_count))

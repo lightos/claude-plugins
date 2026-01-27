@@ -73,11 +73,14 @@ for cluster_file in "$RESULTS_DIR"/cluster-*.md; do
     while IFS= read -r meta_line; do
         [ -z "$meta_line" ] && continue
 
-        # Extract file and line from META
-        # shellcheck disable=SC2001 # sed with capture groups is cleaner for regex extraction
-        meta_file=$(echo "$meta_line" | sed 's/.*file=\([^ ]*\).*/\1/')
-        # shellcheck disable=SC2001
-        meta_line_num=$(echo "$meta_line" | sed 's/.*line=\([^ ]*\).*/\1/')
+        # Extract file and line from META using bash parameter expansion
+        # This handles spaces in file paths by anchoring on known delimiters
+        meta_file=${meta_line#*file=}
+        meta_file=${meta_file%% line=*}
+
+        meta_line_num=${meta_line#*line=}
+        meta_line_num=${meta_line_num%% *}
+        meta_line_num=${meta_line_num%%-->*}  # handle end of comment
         location="$meta_file:$meta_line_num"
 
         # Find matching issue ID from issues.json

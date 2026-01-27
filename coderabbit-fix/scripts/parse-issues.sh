@@ -25,7 +25,10 @@ function trim(s) {
 
 function output_issue() {
   if (file == "") return
-  if (id > 1) printf ",\n"
+
+  # Print comma before all but first issue
+  if (issue_count > 0) printf ",\n"
+  issue_count++
 
   # Clean up multi-line fields
   gsub(/[[:space:]]+/, " ", comment)
@@ -34,7 +37,7 @@ function output_issue() {
   prompt = trim(prompt)
 
   printf "    {\n"
-  printf "      \"id\": %d,\n", id
+  printf "      \"id\": %d,\n", issue_count
   printf "      \"file\": \"%s\",\n", json_escape(file)
   printf "      \"line\": %d,\n", line
   printf "      \"type\": \"%s\",\n", json_escape(type)
@@ -46,14 +49,13 @@ function output_issue() {
 BEGIN {
   print "{"
   print "  \"issues\": ["
-  id = 0
+  issue_count = 0
   section = ""
   file = ""; line = 0; type = ""; comment = ""; prompt = ""
 }
 
 /^=+$/ {
   output_issue()
-  id++
   section = ""
   file = ""; line = 0; type = ""; comment = ""; prompt = ""
   next
@@ -103,7 +105,7 @@ END {
   output_issue()
   print ""
   print "  ],"
-  printf "  \"total\": %d\n", (id > 0 ? id : 0)
+  printf "  \"total\": %d\n", issue_count
   print "}"
 }
 ' "$INPUT" > "$OUTPUT"

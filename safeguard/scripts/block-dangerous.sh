@@ -19,11 +19,18 @@ fi
 # Read tool input from stdin
 TOOL_INPUT=$(cat)
 
-# Extract command from tool input
-COMMAND=$(echo "$TOOL_INPUT" | jq -r '.tool_input.command // empty')
+# Extract command from tool input using sentinel value to distinguish cases
+COMMAND=$(echo "$TOOL_INPUT" | jq -r '.tool_input.command // "__NO_COMMAND__"' 2>/dev/null)
+JQ_EXIT=$?
 
-if [[ -z "$COMMAND" ]]; then
-    # No command found, allow
+if [[ $JQ_EXIT -ne 0 ]]; then
+    # jq parse error - deny with clear message (exit 0 per hook protocol)
+    echo '{"hookSpecificOutput":{"permissionDecision":"deny"},"systemMessage":"ERROR: Failed to parse tool input JSON"}'
+    exit 0
+fi
+
+if [[ "$COMMAND" == "__NO_COMMAND__" ]]; then
+    # Valid JSON but no command field - allow (not a Bash tool call)
     echo '{}'
     exit 0
 fi
@@ -98,7 +105,8 @@ has_allow_flag() {
             return 1
         fi
 
-        if (( now - flag_time < 60 )); then
+        local delta=$(( now - flag_time ))
+        if (( delta >= 0 && delta < 60 )); then
             # Flag is valid - already consumed by rename
             rm -f "$consumed_file"
             return 0
@@ -167,6 +175,7 @@ matches() {
 # System Destruction (CRITICAL)
 if is_category_enabled "system-destruction"; then
     # rm -rf on dangerous paths
+    # shellcheck disable=SC2016 # \$HOME is intentional - we match the literal string, not expand it
     pattern='rm[[:space:]]+(-[a-zA-Z]*r[a-zA-Z]*f|[a-zA-Z]*f[a-zA-Z]*r)[a-zA-Z]*[[:space:]]+(/|~|\$HOME|/etc|/usr|/var|/bin|/sbin|/lib|/boot|/dev|/proc|/sys)([[:space:]]|$|/)'
     if matches "$pattern"; then
         check_and_maybe_block "system-destruction" "CRITICAL" "Recursive forced deletion of critical system paths can destroy your entire system."

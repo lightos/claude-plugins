@@ -15,9 +15,15 @@ fi
 
 # Find .md files, sort by modification time (newest first), limit to 10
 # Use null-delimited find with xargs for cross-platform compatibility and safe filename handling
-plans=$(find "$PLANS_DIR" -maxdepth 1 -name "*.md" -type f -print0 2>/dev/null | \
-  xargs -0 -r ls -t 2>/dev/null | \
-  head -10)
+# Note: avoid -r flag (GNU-only) by checking if files exist first
+if find "$PLANS_DIR" -maxdepth 1 -name "*.md" -type f -print -quit 2>/dev/null | grep -q .; then
+  # Read null-delimited list safely into array
+  mapfile -d '' -t plan_arr < <(find "$PLANS_DIR" -maxdepth 1 -name "*.md" -type f -print0 2>/dev/null)
+  # Sort by modification time and limit to 10
+  plans=$(printf '%s\n' "${plan_arr[@]}" | xargs -d '\n' ls -t 2>/dev/null | head -10)
+else
+  plans=""
+fi
 
 if [ -z "$plans" ]; then
   echo "ERROR: No plan files found in $PLANS_DIR"
