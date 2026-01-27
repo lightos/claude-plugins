@@ -263,7 +263,7 @@ fi
 if is_category_enabled "git-commits"; then
     pattern='(^|[^[:alnum:]_])git[[:space:]]+commit([^[:alnum:]_]|$)'
     if matches "$pattern"; then
-        check_and_maybe_block "git-commits" "HIGH" "Git commits should only be made when explicitly requested to ensure proper review."
+        check_and_maybe_block "git-commits" "HIGH" "Git commits should only be made when explicitly requested. REMINDER: Do not mention Claude or AI in commit messages."
     fi
 fi
 
