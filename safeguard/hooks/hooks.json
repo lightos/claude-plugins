@@ -1,4 +1,5 @@
 {
+  "description": "Blocks dangerous bash commands with category-based protection",
   "hooks": {
     "PreToolUse": [
       {
@@ -6,8 +7,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/block-dangerous.sh\"",
-            "timeout": 5
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/block-dangerous.sh",
+            "timeout": 30
           }
         ]
       }

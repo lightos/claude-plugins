@@ -6,13 +6,13 @@ set -uo pipefail
 
 # Check bash version (need 4+ for associative arrays)
 if ((BASH_VERSINFO[0] < 4)); then
-    echo '{"hookSpecificOutput":{"permissionDecision":"deny"},"systemMessage":"ERROR: safeguard plugin requires Bash 4+. macOS users: brew install bash"}'
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ERROR: safeguard plugin requires Bash 4+. macOS users: brew install bash"}}'
     exit 0
 fi
 
 # Check for jq dependency
 if ! command -v jq &>/dev/null; then
-    echo '{"hookSpecificOutput":{"permissionDecision":"deny"},"systemMessage":"ERROR: safeguard plugin requires jq. Install with: brew install jq (macOS) or apt install jq (Linux)"}'
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ERROR: safeguard plugin requires jq. Install with: brew install jq (macOS) or apt install jq (Linux)"}}'
     exit 0
 fi
 
@@ -25,7 +25,7 @@ JQ_EXIT=$?
 
 if [[ $JQ_EXIT -ne 0 ]]; then
     # jq parse error - deny with clear message (exit 0 per hook protocol)
-    echo '{"hookSpecificOutput":{"permissionDecision":"deny"},"systemMessage":"ERROR: Failed to parse tool input JSON"}'
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"ERROR: Failed to parse tool input JSON"}}'
     exit 0
 fi
 
@@ -138,10 +138,10 @@ IMPORTANT: You MUST use AskUserQuestion to ask the user if they want to allow th
 
 If the user selects 'Yes', run /safeguard:allow-dangerous $category and then retry the original command."
 
-    # Escape for JSON
-    message=$(echo "$message" | jq -Rs .)
+    # Escape for JSON - remove outer quotes since we're embedding in a JSON string
+    message=$(echo "$message" | jq -Rs . | sed 's/^"//;s/"$//')
 
-    echo "{\"hookSpecificOutput\":{\"permissionDecision\":\"deny\"},\"systemMessage\":$message}"
+    echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$message\"}}"
     exit 0
 }
 
