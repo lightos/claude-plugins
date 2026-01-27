@@ -1,0 +1,139 @@
+{
+  "linters": {
+    "eslint": {
+      "name": "ESLint",
+      "supports_fix": true,
+      "fix_args": ["--fix"],
+      "check_args": [],
+      "file_types": ["js", "jsx", "ts", "tsx", "mjs", "cjs"],
+      "accepts_directories": true,
+      "json_output": "--format=json",
+      "local_exec": ["npx --no-install eslint", "pnpm exec eslint", "yarn exec eslint", "bunx eslint"],
+      "configs": [".eslintrc", ".eslintrc.js", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml", "eslint.config.js", "eslint.config.mjs", "eslint.config.cjs"],
+      "package_json_key": "eslintConfig",
+      "conflicts_with": ["biome"]
+    },
+    "prettier": {
+      "name": "Prettier",
+      "supports_fix": true,
+      "fix_args": ["--write"],
+      "check_args": ["--check"],
+      "file_types": ["js", "jsx", "ts", "tsx", "json", "css", "scss", "md", "yaml", "yml", "html"],
+      "accepts_directories": true,
+      "json_output": null,
+      "local_exec": ["npx --no-install prettier", "pnpm exec prettier", "yarn exec prettier", "bunx prettier"],
+      "configs": [".prettierrc", ".prettierrc.js", ".prettierrc.json", ".prettierrc.yml", ".prettierrc.yaml", "prettier.config.js", "prettier.config.mjs", "prettier.config.cjs"],
+      "package_json_key": "prettier",
+      "conflicts_with": ["biome"]
+    },
+    "biome": {
+      "name": "Biome",
+      "supports_fix": true,
+      "fix_args": ["check", "--write"],
+      "check_args": ["check"],
+      "file_types": ["js", "jsx", "ts", "tsx", "json"],
+      "accepts_directories": true,
+      "json_output": "--reporter=json",
+      "local_exec": ["npx --no-install @biomejs/biome", "pnpm exec biome", "yarn exec biome", "bunx biome"],
+      "configs": ["biome.json", "biome.jsonc"],
+      "conflicts_with": ["eslint", "prettier"]
+    },
+    "markdownlint": {
+      "name": "markdownlint",
+      "supports_fix": true,
+      "fix_args": ["--fix"],
+      "check_args": [],
+      "file_types": ["md"],
+      "accepts_directories": false,
+      "json_output": null,
+      "local_exec": ["npx --no-install markdownlint-cli", "pnpm exec markdownlint"],
+      "configs": [".markdownlint.json", ".markdownlint.yaml", ".markdownlint.yml", ".markdownlintrc"],
+      "glob_pattern": "**/*.md"
+    },
+    "shellcheck": {
+      "name": "ShellCheck",
+      "supports_fix": false,
+      "fix_args": null,
+      "check_args": [],
+      "file_types": ["sh", "bash"],
+      "accepts_directories": false,
+      "json_output": "--format=json",
+      "local_exec": [],
+      "configs": [".shellcheckrc"],
+      "glob_pattern": "**/*.{sh,bash}"
+    },
+    "ruff": {
+      "name": "Ruff",
+      "supports_fix": true,
+      "fix_args": ["check", "--fix"],
+      "check_args": ["check"],
+      "file_types": ["py"],
+      "accepts_directories": true,
+      "json_output": "--output-format=json",
+      "local_exec": ["python -m ruff", "poetry run ruff", "uv run ruff"],
+      "configs": ["ruff.toml", ".ruff.toml", "pyproject.toml"]
+    },
+    "pylint": {
+      "name": "Pylint",
+      "supports_fix": false,
+      "fix_args": null,
+      "check_args": [],
+      "file_types": ["py"],
+      "accepts_directories": true,
+      "json_output": "--output-format=json",
+      "local_exec": ["python -m pylint", "poetry run pylint"],
+      "configs": [".pylintrc", "pylintrc", "pyproject.toml", "setup.cfg"]
+    },
+    "black": {
+      "name": "Black",
+      "supports_fix": true,
+      "fix_args": [],
+      "check_args": ["--check"],
+      "file_types": ["py"],
+      "accepts_directories": true,
+      "json_output": null,
+      "local_exec": ["python -m black", "poetry run black", "uv run black"],
+      "configs": ["pyproject.toml"],
+      "pyproject_section": "tool.black"
+    },
+    "mypy": {
+      "name": "mypy",
+      "supports_fix": false,
+      "fix_args": null,
+      "check_args": [],
+      "file_types": ["py"],
+      "accepts_directories": true,
+      "json_output": null,
+      "local_exec": ["python -m mypy", "poetry run mypy"],
+      "configs": ["mypy.ini", ".mypy.ini", "pyproject.toml", "setup.cfg"]
+    },
+    "tsc": {
+      "name": "TypeScript",
+      "supports_fix": false,
+      "fix_args": null,
+      "check_args": ["--noEmit"],
+      "file_types": ["ts", "tsx"],
+      "accepts_directories": true,
+      "json_output": null,
+      "local_exec": ["npx --no-install tsc", "pnpm exec tsc", "yarn exec tsc"],
+      "configs": ["tsconfig.json"]
+    }
+  },
+  "conflict_groups": [
+    {
+      "name": "JavaScript formatters",
+      "linters": ["prettier", "biome"],
+      "resolution": "prefer_biome_if_configured"
+    },
+    {
+      "name": "JavaScript linters",
+      "linters": ["eslint", "biome"],
+      "resolution": "prefer_biome_if_configured"
+    },
+    {
+      "name": "Python formatters",
+      "linters": ["black", "ruff"],
+      "resolution": "prefer_ruff_if_configured"
+    }
+  ]
+}

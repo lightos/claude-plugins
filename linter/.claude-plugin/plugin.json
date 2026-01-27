@@ -1,0 +1,9 @@
+{
+  "name": "linter",
+  "version": "0.1.0",
+  "description": "Run all available linters on the codebase with auto-fix and interactive fixing",
+  "author": {
+    "name": "Claude Plugins"
+  },
+  "keywords": ["linting", "code-quality", "formatting", "eslint", "prettier", "shellcheck"]
+}

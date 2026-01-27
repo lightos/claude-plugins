@@ -17,6 +17,11 @@
       "name": "codex-review",
       "source": "./codex-review",
       "description": "Second-opinion reviews using OpenAI Codex CLI"
+    },
+    {
+      "name": "linter",
+      "source": "./linter",
+      "description": "Run all available linters on the codebase with auto-fix and interactive fixing"
     }
   ]
 }
