@@ -132,11 +132,7 @@ Category: $category
 Risk Level: $risk_level
 Reason: $reason
 
-IMPORTANT: You MUST use AskUserQuestion to ask the user if they want to allow this command. Present two options:
-1. 'No, cancel this operation' (MUST be first option, this is the default)
-2. 'Yes, allow this one time'
-
-If the user selects 'Yes', run /safeguard:allow-dangerous $category and then retry the original command."
+To allow this command, run: /safeguard:allow-dangerous $category"
 
     # Escape for JSON - remove outer quotes since we're embedding in a JSON string
     message=$(echo "$message" | jq -Rs . | sed 's/^"//;s/"$//')
