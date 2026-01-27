@@ -1,6 +1,6 @@
 ---
 name: second-opinion
-description: Consult Codex for independent perspective on technical decisions when facing uncertainty or when the user explicitly requests it
+description: Consult Codex for advisory second opinion on technical decisions - use for guidance, not automated CLI execution
 ---
 
 # Second Opinion Skill
@@ -47,6 +47,10 @@ Invoke this skill when the user says:
 - "What would Codex say"
 - "Check with Codex"
 - "Consult Codex about this"
+- "Consult Codex to review..." (advisory, not CLI execution)
+- "Ask Codex to review..." (advisory, not CLI execution)
+- "Get Codex's perspective on..."
+- "What does Codex think about..."
 
 ## How to Frame the Query
 

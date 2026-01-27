@@ -160,6 +160,10 @@ TOTAL_ISSUES=0
 FIXED_COUNT=0
 UNFIXABLE_COUNT=0
 
+# Create temp file for NUL-delimited file lists (command substitution strips NULs)
+FILES_TMP=$(mktemp)
+trap 'rm -f "$FILES_TMP"' EXIT INT TERM HUP
+
 while IFS= read -r line; do
     # Skip non-linter lines (conflicts, summaries have explicit .type field).
     # Linter entries from detect-linters.sh have no .type field, so they default to "linter"
@@ -193,10 +197,10 @@ while IFS= read -r line; do
         [[ -n "$check_args" ]] && cmd="$cmd $check_args"
     fi
 
-    # Get files/directory to lint (NUL-delimited)
-    files_raw=$(get_files_for_linter "$file_types" "$accepts_dirs" "$glob_pattern")
+    # Get files/directory to lint (NUL-delimited, written to temp file to preserve NULs)
+    get_files_for_linter "$file_types" "$accepts_dirs" "$glob_pattern" > "$FILES_TMP"
 
-    if [[ -z "$files_raw" ]]; then
+    if [[ ! -s "$FILES_TMP" ]]; then
         output_result "{\"type\":\"skip\",\"linter\":\"$linter_id\",\"reason\":\"no_files_found\"}"
         continue
     fi
@@ -215,7 +219,7 @@ while IFS= read -r line; do
     else
         # Pass files as arguments using NUL-safe xargs with -- to prevent option injection
         # shellcheck disable=SC2086
-        linter_output=$(echo -n "$files_raw" | xargs -0 $cmd -- 2>&1) || exit_code=$?
+        linter_output=$(xargs -0 $cmd -- < "$FILES_TMP" 2>&1) || exit_code=$?
     fi
 
     end_time=$(date +%s)
@@ -246,7 +250,7 @@ while IFS= read -r line; do
                 remaining_output=$($check_cmd . 2>&1) || remaining_exit=$?
             else
                 # shellcheck disable=SC2086
-                remaining_output=$(echo -n "$files_raw" | xargs -0 $check_cmd -- 2>&1) || remaining_exit=$?
+                remaining_output=$(xargs -0 $check_cmd -- < "$FILES_TMP" 2>&1) || remaining_exit=$?
             fi
 
             if [[ $remaining_exit -eq 0 ]]; then

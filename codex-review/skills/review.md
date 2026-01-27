@@ -1,21 +1,21 @@
 ---
 name: review
-description: Use when the user wants a second opinion on code changes, wants to validate a plan, mentions reviewing uncommitted changes with an external tool, or wants to review a GitHub Pull Request
+description: Runs Codex CLI to review code changes, validate plans, or review GitHub Pull Requests via automated command execution
 ---
 
 # Codex Review Skill
 
-This skill provides second-opinion reviews using OpenAI's Codex CLI.
+This skill runs automated code reviews using OpenAI's Codex CLI.
 
 ## When to Use
 
 Trigger this skill when the user:
 
-- Wants a "second opinion" on their code or plan
+- Wants to run automated code review via Codex CLI
 - Mentions reviewing uncommitted changes
 - Asks for external validation of their work
 - Wants to check their implementation plan before proceeding
-- Mentions Codex review or code review
+- Says "run codex review" or "code review"
 - Wants to review a GitHub Pull Request
 
 ## Determine Review Type
