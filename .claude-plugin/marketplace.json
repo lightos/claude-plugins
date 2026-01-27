@@ -9,6 +9,11 @@
   },
   "plugins": [
     {
+      "name": "safeguard",
+      "source": "./safeguard",
+      "description": "Block dangerous commands before they execute"
+    },
+    {
       "name": "coderabbit-fix",
       "source": "./coderabbit-fix",
       "description": "Automates CodeRabbit code review and intelligent issue fixing"

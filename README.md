@@ -19,9 +19,16 @@ A collection of plugins for [Claude Code](https://claude.com/claude-code) that e
 
 | Plugin | Purpose | Install |
 |--------|---------|---------|
+| safeguard | Block dangerous commands | `/plugin install safeguard@cc-plugins` |
 | linter | Auto-detect and run linters | `/plugin install linter@cc-plugins` |
 | coderabbit-fix | CodeRabbit review + auto-fix | `/plugin install coderabbit-fix@cc-plugins` |
 | codex-review | Second-opinion code reviews | `/plugin install codex-review@cc-plugins` |
+
+### safeguard
+
+Block dangerous commands like `rm -rf`, `git push --force`, and other destructive operations before they execute. Configurable allowlists and temporary overrides.
+
+[Full documentation →](safeguard/README.md)
 
 ### linter
 
