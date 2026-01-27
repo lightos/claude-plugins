@@ -13,7 +13,6 @@ TEST_CASES="$SCRIPT_DIR/test-cases.txt"
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Counters
@@ -64,6 +63,7 @@ disable_all_categories() {
 EOF
 }
 
+# shellcheck disable=SC2317 # Called via trap, not unreachable
 cleanup() {
     rm -rf "$TEST_CONFIG_DIR"
 }
