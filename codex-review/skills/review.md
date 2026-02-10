@@ -18,6 +18,15 @@ Trigger this skill when the user:
 - Says "run codex review" or "code review"
 - Wants to review a GitHub Pull Request
 
+## CRITICAL: Do NOT Pre-Read Files
+
+Before invoking any review command:
+
+- Do NOT read plan files, code files, or any content that will be reviewed
+- Do NOT read research documents, context files, or supporting materials
+- The review scripts and agents handle all file reading internally
+- Pre-reading wastes tokens by duplicating content in the main context
+
 ## Determine Review Type
 
 When invoked, determine which review type is appropriate:
@@ -40,7 +49,15 @@ Use when the user:
 - Asks for feedback on an implementation plan
 - Mentions "review my plan" or similar
 
-**Run:** `/codex-review:plan` command
+Do NOT read the plan files first. Pass paths only.
+
+**Single plan** (e.g., "review this plan", "review fancy-giggling-sun"):
+**Run:** `/codex-review:plan <path>`
+
+**Multiple plans** (e.g., "review all my plans", "review plans/*.md", "review these 9 plans"):
+**Run:** `/codex-review:plan-batch`
+
+If ambiguous whether single or batch, ask the user which mode.
 
 ### Pull Request Review
 
@@ -76,4 +93,14 @@ AskUserQuestion:
 If the user explicitly wants fixes applied automatically, or wants no prompts:
 
 - For code: `/codex-review:code --auto`
-- For plans: `/codex-review:plan --auto`
+- For single plan: `/codex-review:plan --auto`
+- For multiple plans: `/codex-review:plan-batch --auto`
+- For multiple plans with fixes: `/codex-review:plan-batch --auto --fix`
+
+## Scope Limitation
+
+When executing reviews:
+
+- Do NOT spawn additional agents outside this plugin's defined agents
+- Do NOT launch explore/validation tasks beyond what the commands specify
+- The issue-handler agent handles all validation — do not duplicate this work

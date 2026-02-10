@@ -49,10 +49,10 @@ else
 fi
 ```
 
-2. Format the output nicely for the user, showing:
+1. Format the output nicely for the user, showing:
    - Which categories are enabled vs disabled
    - Any active one-time bypass flags
    - The config file location
 
-3. Remind the user they can use `/safeguard:config` to change settings or
+1. Remind the user they can use `/safeguard:config` to change settings or
    `/safeguard:allow-dangerous <category>` for one-time bypasses.

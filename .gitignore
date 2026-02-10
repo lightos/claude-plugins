@@ -3,4 +3,5 @@
 node_modules/
 .coderabbit-results/
 .codex-review/
+.claude/
 CLAUDE.md

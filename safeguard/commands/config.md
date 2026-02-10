@@ -31,7 +31,7 @@ if [[ -f "$CONFIG_FILE" ]]; then
 fi
 ```
 
-2. Use AskUserQuestion to ask about EACH category sequentially.
+1. Use AskUserQuestion to ask about EACH category sequentially.
    For each category, ask:
 
    "Enable **{category}** protection? ({description})"
@@ -40,7 +40,7 @@ fi
    - "Keep enabled" or "Enable" (depending on current state)
    - "Disable"
 
-3. After all questions, write the config:
+2. After all questions, write the config:
 
 ```bash
 CONFIG_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/.safeguard"
@@ -63,7 +63,7 @@ EOF
 
 (Replace true/false based on user's choices)
 
-4. Show final summary of enabled/disabled categories.
+1. Show final summary of enabled/disabled categories.
 
 ## Quick Configuration Options
 

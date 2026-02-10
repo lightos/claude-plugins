@@ -102,7 +102,7 @@ else
         if [[ -f "$f" ]]; then
             echo "Removing previous result: $f" >&2
             rm -f "$f"
-            ((deleted_count++)) || true
+            deleted_count=$((deleted_count + 1))
         fi
     done
     if [[ $deleted_count -eq 0 ]]; then

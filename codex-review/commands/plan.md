@@ -19,6 +19,10 @@ Review a Claude Code implementation plan using OpenAI Codex as a second opinion.
 
 ---
 
+**Do NOT read the plan file.** The scripts and agents handle all file reading internally. Pre-reading wastes tokens by duplicating content in the main context.
+
+---
+
 ## Phase 1: Locate Plan File
 
 Parse arguments to check for `--auto` flag:
@@ -29,8 +33,6 @@ Parse arguments to check for `--auto` flag:
 ### If Path Provided
 
 If the user provided a path argument, proceed directly to Phase 2.
-
-**Do NOT read the plan file** - the script validates existence and returns clear errors.
 
 ### If No Path Provided
 
