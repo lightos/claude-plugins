@@ -67,9 +67,8 @@ fi
 
 **Output interpretation:**
 
-- `EXISTS:<path>` → Previous results found.
-  - **If `AUTO_MODE=true`**: Re-run with `--force` automatically (skip to Step 1.2)
-  - **If `AUTO_MODE=false`**: Use AskUserQuestion:
+- `EXISTS:<path>` → Previous results found. **This only occurs in interactive mode** (auto mode already passes `--force` in Step 1.1, so the script never returns `EXISTS:`).
+  - Use AskUserQuestion:
     - "Delete and re-run" → Run with `--force`
     - "Skip to handling" → Continue to Phase 2/3
     - "Abort" → Stop workflow
@@ -154,11 +153,11 @@ Re-run: `"${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" --base origin/master [--f
 
 **Cancellation:** If user selects the built-in "Other" option on the first prompt and enters "abort" or "cancel", stop workflow with message: "Review cancelled by user"
 
-### Step 1.2: Handle User Decision (if EXISTS)
+### Step 1.2: Handle User Decision (if EXISTS, interactive mode only)
 
-**For both `AUTO_MODE=true` and manual "Delete and re-run":**
+**This step only applies in interactive mode.** In auto mode, `--force` is already passed in Step 1.1, so the script never returns `EXISTS:` and this step is skipped entirely.
 
-Both paths use the same logic to re-run with `--force`:
+If the user chose "Delete and re-run", re-run with `--force`:
 
 ```bash
 REVIEW_SCRIPT_ARGS=("--force")
@@ -167,9 +166,6 @@ if [[ -n "$BASE_BRANCH" ]]; then
 fi
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-review.sh" "${REVIEW_SCRIPT_ARGS[@]}"
 ```
-
-- **If `AUTO_MODE=true`**: Execute this automatically
-- **If `AUTO_MODE=false`** and user chose "Delete and re-run": Execute after user confirmation
 
 ### Step 1.3: Branch Based on Issue Count
 

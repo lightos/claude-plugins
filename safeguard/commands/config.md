@@ -16,6 +16,7 @@ You are configuring the safeguard plugin's protection categories.
 | git-pushes         | All git push commands                            | ON      |
 | git-destructive    | reset --hard, clean -f, force push, branch -D    | ON      |
 | remote-code-exec   | curl\|sh, wget\|bash, piped URLs to shell        | ON      |
+| database-destructive | DELETE, DROP, TRUNCATE, ALTER via psql/mysql/mariadb/sqlcmd/sqlite3/mongosh | ON |
 | network-exfil      | scp, rsync, netcat, curl POST with files         | OFF     |
 | containers         | docker rm/rmi -f, kubectl delete, prune          | OFF     |
 
@@ -54,6 +55,7 @@ cat > "$CONFIG_DIR/config.json" << 'EOF'
     "git-pushes": true,
     "git-destructive": true,
     "remote-code-exec": true,
+    "database-destructive": true,
     "network-exfil": false,
     "containers": false
   }

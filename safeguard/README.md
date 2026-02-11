@@ -6,7 +6,7 @@ protection and one-time bypass mechanism.
 ## Features
 
 - **PreToolUse hook** that intercepts bash commands before execution
-- **8 protection categories** with independent enable/disable
+- **9 protection categories** with independent enable/disable
 - **One-time bypass** mechanism for intentional dangerous operations
 - **Clear feedback** when commands are blocked, with user prompts to allow
 
@@ -40,6 +40,7 @@ claude --plugin-dir /path/to/safeguard
 | git-pushes         | ON      | All git push commands                             |
 | git-destructive    | ON      | reset --hard, clean -f, force push, branch -D     |
 | remote-code-exec   | ON      | curl\|sh, wget\|bash, piped URLs to shell         |
+| database-destructive | ON    | DELETE, DROP, TRUNCATE, ALTER via psql/mysql/mariadb/sqlcmd/sqlite3/mongosh |
 | network-exfil      | OFF     | scp, rsync, netcat, curl POST with files          |
 | containers         | OFF     | docker rm/rmi -f, kubectl delete, prune           |
 
@@ -98,6 +99,12 @@ Fallback locations:
 1. `$CLAUDE_PROJECT_DIR/.claude/.safeguard/`
 2. `$PWD/.claude/.safeguard/`
 3. `$HOME/.claude/.safeguard/`
+
+**Note on new categories:** When a config file already exists but is missing a
+key for a newly added category, that category defaults to **disabled** (OFF).
+This is a conservative safety choice -- existing configurations are not
+silently modified by plugin updates. To enable a new category, run
+`/safeguard:config` or manually add the category key to `config.json`.
 
 ## Testing
 

@@ -143,6 +143,17 @@ fi
 declare -A PID_TO_NAME
 declare -A PID_TO_PLAN_PATH
 declare -A PID_TO_OUTPUT
+declare -A PID_TO_IDX
+
+# Cleanup handler for background jobs
+cleanup() {
+    for pid in "${!PID_TO_NAME[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
+}
+trap cleanup EXIT
 
 # Track results: indexed arrays parallel to PLAN_PATHS
 declare -a RESULT_STATUS
@@ -186,8 +197,7 @@ launch_one() {
     PID_TO_PLAN_PATH[$pid]="$plan_path"
     PID_TO_OUTPUT[$pid]="$output_file"
 
-    # Store index mapping
-    eval "PID_IDX_$pid=$idx"
+    PID_TO_IDX[$pid]="$idx"
 }
 
 # Process completed job
@@ -196,8 +206,7 @@ handle_completion() {
     local name="${PID_TO_NAME[$pid]}"
     local plan_path="${PID_TO_PLAN_PATH[$pid]}"
     local output="${PID_TO_OUTPUT[$pid]}"
-    local idx
-    eval "idx=\$PID_IDX_$pid"
+    local idx="${PID_TO_IDX[$pid]}"
 
     # Read actual codex exit code from sidecar file
     local exit_file="$output.exit"

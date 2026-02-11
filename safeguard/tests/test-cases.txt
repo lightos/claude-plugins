@@ -127,6 +127,57 @@ kubectl delete pod --all	containers	1
 kubectl delete pod mypod	containers	0
 kubectl get pods	containers	0
 
+# Database Destructive - HIGH
+# psql inline SQL
+psql -c "DELETE FROM users"	database-destructive	1
+psql -h localhost -p 5432 -U admin -d mydb -c "DELETE FROM users WHERE id = 1"	database-destructive	1
+psql --command "DROP TABLE users"	database-destructive	1
+psql -c "TRUNCATE TABLE sessions"	database-destructive	1
+psql -c "ALTER TABLE users DROP COLUMN email"	database-destructive	1
+PGPASSWORD=secret psql -h localhost -p 5433 -U salesbot -d salesbot -c "DELETE FROM tenants WHERE id = 123"	database-destructive	1
+psql -c "drop table users"	database-destructive	1
+psql -c "delete from users"	database-destructive	1
+# mysql/mariadb inline SQL
+mysql -e "DELETE FROM users"	database-destructive	1
+mysql -h localhost -u root -p mydb -e "DROP TABLE users"	database-destructive	1
+mariadb -e "TRUNCATE TABLE sessions"	database-destructive	1
+mariadb --execute "ALTER TABLE users ADD COLUMN age int"	database-destructive	1
+# sqlite3 inline SQL
+sqlite3 mydb.sqlite "DELETE FROM users"	database-destructive	1
+sqlite3 test.db "DROP TABLE sessions"	database-destructive	1
+# sqlcmd inline SQL
+sqlcmd -S localhost -Q "DELETE FROM users"	database-destructive	1
+sqlcmd -S localhost -d mydb -q "DROP TABLE users"	database-destructive	1
+# mongosh/mongo --eval
+mongosh --eval "db.users.deleteMany({})"	database-destructive	1
+mongo mydb --eval "db.users.drop()"	database-destructive	1
+mongosh --eval "db.dropDatabase()"	database-destructive	1
+mongosh --eval "db.users.remove({})"	database-destructive	1
+# File execution (MEDIUM)
+psql -f drop_tables.sql	database-destructive	1
+psql --file migrate.sql	database-destructive	1
+sqlcmd -i drop.sql	database-destructive	1
+mongosh --file cleanup.js	database-destructive	1
+# Piped destructive SQL
+echo "DROP TABLE users" | psql	database-destructive	1
+echo "DELETE FROM sessions" | mysql	database-destructive	1
+echo "TRUNCATE TABLE logs" | sqlite3 mydb.db	database-destructive	1
+# Should allow: safe database operations
+psql --version	database-destructive	0
+psql -c "SELECT * FROM users"	database-destructive	0
+psql -c "INSERT INTO users VALUES (1, 'test')"	database-destructive	0
+psql -c "CREATE TABLE new_table (id int)"	database-destructive	0
+psql -l	database-destructive	0
+mysql --help	database-destructive	0
+mysql -e "SHOW TABLES"	database-destructive	0
+mysql -e "SELECT * FROM users"	database-destructive	0
+mariadb --version	database-destructive	0
+sqlcmd -?	database-destructive	0
+sqlite3 --version	database-destructive	0
+mongosh --version	database-destructive	0
+psql -c "SELECT * FROM delete_log"	database-destructive	0
+mysql -e "SELECT * FROM drop_audit"	database-destructive	0
+
 # Safe commands that should never be blocked
 ls -la	none	0
 cat file.txt	none	0

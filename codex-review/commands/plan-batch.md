@@ -39,8 +39,8 @@ Parse ARGUMENTS to extract flags and plan paths.
 Expand the glob pattern to get plan file paths:
 
 ```bash
-# Example: expand glob
-ls -1 PATTERN 2>/dev/null
+# Example: expand glob (handles spaces in filenames)
+for f in PATTERN; do [[ -e "$f" ]] && printf '%s\n' "$f"; done
 ```
 
 ### If paths provided directly

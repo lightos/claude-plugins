@@ -59,6 +59,7 @@ declare -A DEFAULT_ENABLED=(
     ["remote-code-exec"]=true
     ["network-exfil"]=false
     ["containers"]=false
+    ["database-destructive"]=true
 )
 
 # Load config or use defaults
@@ -73,8 +74,10 @@ is_category_enabled() {
         elif [[ "$enabled" == "false" ]]; then
             return 1
         fi
+        # Key missing from config -- respect user's existing config, default to OFF
+        return 1
     fi
-    # Use default
+    # No config file at all -- use defaults
     [[ "${DEFAULT_ENABLED[$category]:-false}" == "true" ]]
 }
 
@@ -407,6 +410,77 @@ if is_category_enabled "containers"; then
     pattern='kubectl[[:space:]]+delete[[:space:]]+(pod|deployment)[[:space:]]+.*--all'
     if matches "$pattern"; then
         check_and_maybe_block "containers" "HIGH" "Deleting all pods/deployments can cause service outages."
+    fi
+fi
+
+# Database Destructive Operations (HIGH)
+if is_category_enabled "database-destructive"; then
+    # Case-insensitive SQL keywords via character classes
+    # Matches: DELETE, DROP, TRUNCATE, ALTER (any case)
+    sql_destructive='([Dd][Ee][Ll][Ee][Tt][Ee][[:space:]]|[Dd][Rr][Oo][Pp][[:space:]]|[Tt][Rr][Uu][Nn][Cc][Aa][Tt][Ee][[:space:]]|[Aa][Ll][Tt][Ee][Rr][[:space:]])'
+
+    # psql inline: psql ... -c "DELETE ..." or psql ... --command "DELETE ..."
+    pattern="psql[[:space:]]+.*(-c|--command)[[:space:]]+.*${sql_destructive}"
+    if matches "$pattern"; then
+        check_and_maybe_block "database-destructive" "HIGH" "Destructive SQL (DELETE/DROP/TRUNCATE/ALTER) via psql can cause irreversible data loss."
+    fi
+
+    # mysql/mariadb inline: mysql ... -e "DELETE ..." or --execute "DELETE ..."
+    pattern="(mysql|mariadb)[[:space:]]+.*(-e|--execute)[[:space:]]+.*${sql_destructive}"
+    if matches "$pattern"; then
+        check_and_maybe_block "database-destructive" "HIGH" "Destructive SQL (DELETE/DROP/TRUNCATE/ALTER) via mysql/mariadb can cause irreversible data loss."
+    fi
+
+    # sqlite3 inline: sqlite3 db.sqlite "DELETE ..."
+    pattern="sqlite3[[:space:]]+[^[:space:]]+[[:space:]]+.*${sql_destructive}"
+    if matches "$pattern"; then
+        check_and_maybe_block "database-destructive" "HIGH" "Destructive SQL (DELETE/DROP/TRUNCATE/ALTER) via sqlite3 can cause irreversible data loss."
+    fi
+
+    # sqlcmd inline: sqlcmd ... -Q "DELETE ..." or -q "DELETE ..."
+    pattern="sqlcmd[[:space:]]+.*(-Q|-q)[[:space:]]+.*${sql_destructive}"
+    if matches "$pattern"; then
+        check_and_maybe_block "database-destructive" "HIGH" "Destructive SQL (DELETE/DROP/TRUNCATE/ALTER) via sqlcmd can cause irreversible data loss."
+    fi
+
+    # mongosh/mongo --eval with destructive operations
+    mongo_destructive='(deleteMany|deleteOne|\.drop\(|dropDatabase|\.remove\()'
+    pattern="(mongosh|mongo)[[:space:]]+.*--eval[[:space:]]+.*${mongo_destructive}"
+    if matches "$pattern"; then
+        check_and_maybe_block "database-destructive" "HIGH" "Destructive MongoDB operation (delete/drop/remove) can cause irreversible data loss."
+    fi
+
+    # File execution patterns (MEDIUM - can't inspect file contents)
+    # psql -f file or psql --file file
+    pattern='psql[[:space:]]+.*(-f|--file)[[:space:]]'
+    if matches "$pattern"; then
+        check_and_maybe_block "database-destructive" "MEDIUM" "Executing SQL files via psql may contain destructive operations. Review the file first."
+    fi
+
+    # sqlcmd -i file
+    pattern='sqlcmd[[:space:]]+.*-i[[:space:]]'
+    if matches "$pattern"; then
+        check_and_maybe_block "database-destructive" "MEDIUM" "Executing SQL files via sqlcmd may contain destructive operations. Review the file first."
+    fi
+
+    # mongosh --file file
+    pattern='(mongosh|mongo)[[:space:]]+.*--file[[:space:]]'
+    if matches "$pattern"; then
+        check_and_maybe_block "database-destructive" "MEDIUM" "Executing script files via mongosh may contain destructive operations. Review the file first."
+    fi
+
+    # mysql/mariadb -e "source /path/to/script.sql"
+    # Note: stdin redirection (mysql < file.sql) is not reliably detectable
+    # in this pre-exec hook, so it remains a known limitation.
+    pattern='(mysql|mariadb)[[:space:]]+.*(-e|--execute)[[:space:]]+("|'"'"')[[:space:]]*[Ss][Oo][Uu][Rr][Cc][Ee][[:space:]]'
+    if matches "$pattern"; then
+        check_and_maybe_block "database-destructive" "MEDIUM" "Executing SQL files via mysql source command may contain destructive operations. Review the file first."
+    fi
+
+    # Piped destructive SQL: echo "DROP TABLE" | psql/mysql/mariadb/sqlite3
+    pattern="${sql_destructive}.*\|[[:space:]]*(psql|mysql|mariadb|sqlite3)"
+    if matches "$pattern"; then
+        check_and_maybe_block "database-destructive" "HIGH" "Piping destructive SQL to a database CLI can cause irreversible data loss."
     fi
 fi
 

@@ -19,6 +19,7 @@ You are setting a one-time bypass flag for the safeguard plugin.
    - `git-pushes`
    - `git-destructive`
    - `remote-code-exec`
+   - `database-destructive`
    - `network-exfil`
    - `containers`
 

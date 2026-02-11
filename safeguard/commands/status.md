@@ -20,8 +20,17 @@ echo ""
 if [[ -f "$CONFIG_FILE" ]]; then
     echo "Configuration file: $CONFIG_FILE"
     echo ""
-    jq -r '.enabled | to_entries[] |
-      "\(.key): \(if .value then "ON" else "OFF" end)"' "$CONFIG_FILE"
+    # Show all known categories, merging config values with defaults for new categories
+    for cat in system-destruction system-control git-commits git-pushes git-destructive remote-code-exec database-destructive network-exfil containers; do
+        val=$(jq -r ".enabled[\"$cat\"] // empty" "$CONFIG_FILE" 2>/dev/null)
+        if [[ "$val" == "true" ]]; then
+            echo "$cat: ON"
+        elif [[ "$val" == "false" ]]; then
+            echo "$cat: OFF"
+        else
+            echo "$cat: not configured (OFF)"
+        fi
+    done
 else
     echo "No custom configuration found. Using defaults:"
     echo ""
@@ -31,6 +40,7 @@ else
     echo "git-pushes: ON (default)"
     echo "git-destructive: ON (default)"
     echo "remote-code-exec: ON (default)"
+    echo "database-destructive: ON (default)"
     echo "network-exfil: OFF (default)"
     echo "containers: OFF (default)"
 fi

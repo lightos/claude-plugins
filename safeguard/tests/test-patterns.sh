@@ -39,7 +39,8 @@ enable_only_category() {
     "git-destructive": $([ "$category" = "git-destructive" ] && echo "true" || echo "false"),
     "remote-code-exec": $([ "$category" = "remote-code-exec" ] && echo "true" || echo "false"),
     "network-exfil": $([ "$category" = "network-exfil" ] && echo "true" || echo "false"),
-    "containers": $([ "$category" = "containers" ] && echo "true" || echo "false")
+    "containers": $([ "$category" = "containers" ] && echo "true" || echo "false"),
+    "database-destructive": $([ "$category" = "database-destructive" ] && echo "true" || echo "false")
   }
 }
 EOF
@@ -57,7 +58,8 @@ disable_all_categories() {
     "git-destructive": false,
     "remote-code-exec": false,
     "network-exfil": false,
-    "containers": false
+    "containers": false,
+    "database-destructive": false
   }
 }
 EOF

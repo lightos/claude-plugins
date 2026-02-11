@@ -27,9 +27,12 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 # Read manifest
-plan_count=$(jq '.plans | length' "$MANIFEST_PATH")
+plan_count=$(jq '.plans | length' "$MANIFEST_PATH") || {
+    echo "ERROR: Failed to parse manifest JSON: $MANIFEST_PATH" >&2
+    exit 1
+}
 
-if [[ "$plan_count" -eq 0 ]]; then
+if [[ -z "$plan_count" || "$plan_count" -eq 0 ]]; then
     echo "No plans found in manifest."
     exit 0
 fi
