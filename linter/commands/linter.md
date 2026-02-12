@@ -82,6 +82,7 @@ If the summary shows `unfixable > 0` AND `--no-fix` was NOT specified:
 - Focus on one file at a time
 - Make minimal, targeted edits
 - Preserve code intent and functionality
+- Never add disable comments, ignore directives, or config exclusions to suppress warnings. Always fix the actual code. If an error cannot be resolved, report it to the user.
 - If an error cannot be fixed without changing behavior, ask the user
 - Track which errors have been addressed to avoid loops
 

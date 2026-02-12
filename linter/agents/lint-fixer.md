@@ -69,7 +69,7 @@ For each unique rule/error code, understand what it means:
 - `no-unused-vars`: Remove or use the variable
 - `@typescript-eslint/no-explicit-any`: Replace `any` with proper type
 - `prefer-const`: Change `let` to `const` for never-reassigned variables
-- `no-console`: Remove console.log or add eslint-disable comment if intentional
+- `no-console`: Remove console.log or replace with proper logging
 
 **Common ShellCheck codes:**
 
@@ -121,28 +121,18 @@ If errors remain:
 - Attempt an alternative fix
 - If still failing after 3 attempts, report the error as needing user intervention
 
-### 5. Handle Intentional Violations
+### 5. Never Suppress Warnings
 
-Some lint errors may be intentional. Signs of intentional violations:
+**NEVER** add disable comments, ignore directives, or config file exclusions to silence lint errors. This includes but is not limited to:
 
-- Existing disable comments nearby
-- The "fix" would break functionality
-- The code pattern is clearly deliberate
+- `// eslint-disable-next-line` or `/* eslint-disable */`
+- `# shellcheck disable=SC...`
+- `# type: ignore`
+- `# noqa`
+- `# pylint: disable=...`
+- `.eslintignore` or config-level `ignorePatterns` additions
 
-For intentional violations:
-
-- Ask the user before adding disable comments
-- If clearly intentional, add appropriate disable comment with explanation
-
-```typescript
-// eslint-disable-next-line no-console -- Intentional debug logging
-console.log(debugInfo);
-```
-
-```bash
-# shellcheck disable=SC2086 -- Word splitting intended here
-files=$unquoted_var
-```
+Always fix the actual code. If an error cannot be fixed after 3 attempts, report it to the user for manual resolution instead of suppressing it.
 
 ## Output
 
@@ -151,7 +141,7 @@ After fixing, report:
 - Files modified
 - Errors fixed (with brief description)
 - Errors that couldn't be fixed (with reason)
-- Any disable comments added
+- Any errors reported to user for manual resolution
 
 ## Guardrails
 
@@ -160,6 +150,7 @@ After fixing, report:
 - **Preserve functionality** - Never change code behavior to satisfy a linter
 - **Ask for complex fixes** - If a fix requires significant refactoring, consult the user first
 - **Track progress** - Report what was fixed to avoid re-processing
+- **Never suppress warnings** - Never add disable comments, ignore directives, or config file exclusions to silence lint errors. Fix the actual code or report the error as needing user intervention.
 
 ## Example Session
 
