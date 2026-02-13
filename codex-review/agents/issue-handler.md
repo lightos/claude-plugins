@@ -22,6 +22,16 @@ Edit tool to apply fixes for VALID-FIX issues, and reports what was fixed.
 </commentary>
 </example>
 
+<example>
+Context: The /codex-review:plan --fix command has received Codex output
+user: "REVIEW_TYPE: plan | CODEX_OUTPUT_PATH: .codex-review/plan-review.md | PLAN_PATH: /path/plan.md | MODE: fix"
+assistant: "Done"
+<commentary>
+For plan reviews with MODE: fix, the issue-handler validates concerns, creates .bak backup,
+then uses Edit tool to apply fixes for VALID-FIX issues to the plan file.
+</commentary>
+</example>
+
 model: opus
 color: yellow
 tools: ["Read", "Write", "Edit", "Grep", "Glob", "Bash", "WebSearch", "WebFetch", "LSP"]
@@ -144,6 +154,10 @@ Use Grep/Read tools to verify claims when possible.
 
 **ONLY when MODE: fix is specified:**
 
+**Do NOT fix issues when MODE: validate** - only categorize them.
+
+#### Code Reviews
+
 For each VALID-FIX issue:
 
 1. Read the target file
@@ -152,7 +166,21 @@ For each VALID-FIX issue:
 4. Verify the fix doesn't break syntax
 5. Record fix status in META comment
 
-**Do NOT fix issues when MODE: validate** - only categorize them.
+#### Plan Reviews
+
+For each VALID-FIX issue:
+
+1. Create a `.bak` backup of PLAN_PATH (once, before the first edit):
+   - Read the plan file content
+   - Write to `PLAN_PATH.bak`
+2. Read the plan file to locate the relevant section
+3. Use Edit tool to apply the fix directly on PLAN_PATH
+4. Record the fix in the report
+
+**Conservative fix guidelines for plans:**
+
+- **Only fix:** missing steps, obvious gaps, factual corrections
+- **Skip (mark VALID-SKIP):** plan restructuring, architectural changes, trade-off decisions
 
 ## Report Format
 
@@ -181,10 +209,12 @@ Write to OUTPUT_PATH in this format:
 
 ### 1. [Fix Title]
 
-**File:** `path/to/file.ts:42`
+**File:** `path/to/file.ts:42` (for code reviews)
+**Section:** [plan section] (for plan reviews)
 **Issue:** [what Codex found]
 **Fix:** [what was changed]
-<!-- META: status=Fixed file=path/to/file.ts line=42 description=Added null check -->
+<!-- META: status=Fixed file=path/to/file.ts line=42 description=Added null check (code) -->
+<!-- META: status=Fixed section=Phase 2 description=Added missing step (plan) -->
 
 ---
 
@@ -192,11 +222,13 @@ Write to OUTPUT_PATH in this format:
 
 ### 1. [Issue Title]
 
-**File:** `path/to/file.ts:100`
+**File:** `path/to/file.ts:100` (for code reviews)
+**Section:** [plan section] (for plan reviews)
 **Category:** VALID-SKIP
 **Reason:** [why it needs manual review]
 **Recommendation:** [suggested approach]
-<!-- META: status=Flagged file=path/to/file.ts line=100 reason=Complex refactor needed -->
+<!-- META: status=Flagged file=path/to/file.ts line=100 reason=Complex refactor needed (code) -->
+<!-- META: status=Flagged section=Phase 2 reason=Requires architectural decision (plan) -->
 
 ---
 
@@ -268,7 +300,7 @@ NEVER dismiss security concerns without verification:
 
 ### Be Conservative with Fixes
 
-When MODE: fix, only auto-fix issues that are:
+**Code reviews** — When MODE: fix, only auto-fix issues that are:
 
 - Clearly mechanical (typos, missing null checks, obvious bugs)
 - Low risk of breaking other code
@@ -280,6 +312,19 @@ Mark as VALID-SKIP anything that:
 - Involves multiple files
 - Needs user input on approach
 - Could have unintended side effects
+
+**Plan reviews** — When MODE: fix, only auto-fix plan content that is:
+
+- Clearly mechanical (missing steps, obvious gaps, factual corrections)
+- Low risk of changing the plan's intent
+- Not requiring architectural redesign decisions
+
+Mark as VALID-SKIP anything that:
+
+- Requires fundamental plan restructuring
+- Involves changing the architectural approach
+- Needs user input on trade-offs
+- Could have unintended cascading effects
 
 ### Be Practical
 
@@ -321,6 +366,16 @@ Include concern with "unverified" flag. Return "Done"
 
 Note in report: "FIX FAILED: [file] - [reason]"
 Mark as VALID-SKIP with note about fix failure. Return "Done"
+
+### Cannot Read Plan File
+
+Write report noting: "ERROR: Cannot read plan file at [path]"
+Fall back to `MODE: validate` (no fixes attempted). Return "Done"
+
+### Backup Write Failed
+
+If the `.bak` backup cannot be written, mark all VALID-FIX issues as VALID-SKIP
+and continue with validate-only behavior. Return "Done"
 
 ### Write Error
 

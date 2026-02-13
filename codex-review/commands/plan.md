@@ -1,6 +1,6 @@
 ---
 description: Get a second-opinion review of a Claude Code implementation plan
-argument-hint: "[--auto] <plan-file-path>"
+argument-hint: "[--auto] [--fix] <plan-file-path>"
 allowed-tools: ["Bash", "Read", "Task", "AskUserQuestion"]
 ---
 
@@ -15,7 +15,14 @@ Review a Claude Code implementation plan using OpenAI Codex as a second opinion.
 
 ## Flags
 
-- `--auto`: Non-interactive mode. Deletes previous results, no prompts.
+- `--auto`: Non-interactive mode. Deletes previous results, no prompts. Does NOT imply `--fix`.
+- `--fix`: Apply valid fixes to plan file directly (agent uses Edit tool). Requires explicit use.
+
+Flag combinations:
+
+- `--auto`: Review only, no prompts
+- `--fix`: Review + fix, with prompts
+- `--auto --fix`: Review + fix, no prompts
 
 ---
 
@@ -25,9 +32,10 @@ Review a Claude Code implementation plan using OpenAI Codex as a second opinion.
 
 ## Phase 1: Locate Plan File
 
-Parse arguments to check for `--auto` flag:
+Parse arguments to check for flags:
 
 - If ARGUMENTS contains `--auto`: set AUTO_MODE=true
+- If ARGUMENTS contains `--fix`: set FIX_MODE=true
 - Extract plan path from remaining arguments
 
 ### If Path Provided
@@ -71,9 +79,13 @@ On success, the script (`plan-review.sh`) outputs one of:
 On failure, the script writes error messages to stderr and exits with a non-zero
 exit code. Do not parse stdout for errors.
 
-### If EXISTS Response (and not --auto)
+### If EXISTS Response
 
-The script found existing results for this plan. Ask the user:
+The script found existing results for this plan.
+
+**If FIX_MODE=true:** Stale Codex output applied as fixes could introduce incorrect edits. Automatically delete the existing file and re-run with `--auto` (same as "Delete and re-run" path). Do NOT offer to reuse stale results when `--fix` is set.
+
+**If not --auto (and not --fix):** Ask the user:
 
 ```yaml
 AskUserQuestion:
@@ -94,7 +106,7 @@ If "Abort": Stop and inform user
 
 ---
 
-## Phase 3: Validate with Issue Handler
+## Phase 3: Validate and Fix with Issue Handler
 
 Spawn the issue-handler agent to validate Codex findings:
 
@@ -106,13 +118,16 @@ Task tool:
     CODEX_OUTPUT_PATH: [output file from Phase 2]
     PLAN_PATH: [the plan file path]
     OUTPUT_PATH: [directory of CODEX_OUTPUT_PATH]/plan-review-validated-[timestamp].md
-    MODE: validate
+    MODE: [fix if FIX_MODE=true, otherwise validate]
 ```
 
 **Example:** If `CODEX_OUTPUT_PATH` is `.codex-review/plan-review-my-feature-2025-01-15.md`,
 then `OUTPUT_PATH` would be `.codex-review/plan-review-validated-2025-01-15-143022.md`.
 
-**Note:** Plan reviews always use `MODE: validate` - autofix does not apply to plans.
+**MODE Selection:**
+
+- If `--fix` or `--auto --fix`: `MODE: fix` (agent creates `.bak` backup and applies fixes)
+- Otherwise: `MODE: validate` (validate only, no edits)
 
 The agent uses Opus to deeply analyze Codex findings against the plan.
 
@@ -128,6 +143,11 @@ The agent uses Opus to deeply analyze Codex findings against the plan.
 
 **Plan:** [plan file name]
 **Review Date:** [timestamp]
+**Mode:** [validate|fix]
+
+### Fixes Applied
+[If FIX_MODE and fixes were applied: list what was fixed with section references]
+[If FIX_MODE but no fixes applied: "No automatic fixes were applied — all concerns require manual review."]
 
 ### Validated Concerns
 [List concerns that align with coding principles]
@@ -141,6 +161,16 @@ The agent uses Opus to deeply analyze Codex findings against the plan.
 ---
 Full report: [validated output path]
 ```
+
+If `--fix` and fixes were applied, add a note after the summary:
+
+> N fixes applied to plan file. Backup saved as `[PLAN_PATH].bak`.
+
+If `--fix` but no fixes were applied, add:
+
+> No automatic fixes were applied — all concerns require manual review.
+
+If no `--fix`: do not mention fixes (existing behavior).
 
 ---
 

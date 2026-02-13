@@ -62,6 +62,12 @@ OpenAI's Codex CLI.
 
 # Auto mode (no prompts, deletes previous results)
 /codex-review:plan --auto my-plan.md
+
+# Review and apply valid fixes
+/codex-review:plan --fix my-plan.md
+
+# Auto mode with fixes (no prompts)
+/codex-review:plan --auto --fix my-plan.md
 ```
 
 ### Code Review
@@ -168,8 +174,9 @@ Skills trigger automatically through conversation - no commands needed:
 | `--commit <sha>`    | Review changes from a specific commit                                      |
 | `--range <s>..<e>`  | Review commit range (`..` tree-diff, `...` PR-style)                       |
 | `--pr [number]`     | Review a GitHub PR by number, or select interactively (requires `gh` CLI)  |
+| `--fix`             | Apply valid fixes to plan files directly (plan reviews only)               |
 
-For code reviews, `--auto` also enables autofix (applies fixes for valid issues).
+For code reviews, `--auto` enables autofix. For plan reviews, use `--fix` explicitly.
 
 When `--base` is specified with uncommitted changes present, a warning is shown but the branch comparison proceeds (uncommitted changes are ignored).
 
