@@ -38,7 +38,7 @@ claude --plugin-dir /path/to/safeguard
 | system-control     | ON      | shutdown, reboot, kill init, chmod/chown on root  |
 | git-commits        | ON      | All git commit commands                           |
 | git-pushes         | ON      | All git push commands                             |
-| git-destructive    | ON      | reset --hard, clean -f, force push, branch -D     |
+| git-destructive    | ON      | reset --hard, clean -f, force push, branch -D, checkout ., restore |
 | remote-code-exec   | ON      | curl\|sh, wget\|bash, piped URLs to shell         |
 | database-destructive | ON    | DELETE, DROP, TRUNCATE, ALTER via psql/mysql/mariadb/sqlcmd/sqlite3/mongosh |
 | network-exfil      | OFF     | scp, rsync, netcat, curl POST with files          |

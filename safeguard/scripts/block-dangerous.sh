@@ -323,6 +323,28 @@ if is_category_enabled "git-destructive"; then
     if matches "$pattern"; then
         check_and_maybe_block "git-destructive" "MEDIUM" "Rebasing rewrites history and can cause issues with shared branches."
     fi
+
+    # git checkout . (discard all working tree changes)
+    pattern='git[[:space:]]+checkout[[:space:]]+(--[[:space:]]+)?\.([[:space:]]|$)'
+    if matches "$pattern"; then
+        check_and_maybe_block "git-destructive" "HIGH" "Checking out '.' discards all uncommitted changes in the working tree."
+    fi
+
+    # git checkout -- <file> (discard changes to specific files)
+    # Uses .*-- to allow flags/tree-ish before -- (e.g. git checkout HEAD -- file.txt)
+    pattern='git[[:space:]]+checkout[[:space:]]+.*--[[:space:]]'
+    if matches "$pattern"; then
+        check_and_maybe_block "git-destructive" "HIGH" "Checkout with '--' discards uncommitted changes to the specified files."
+    fi
+
+    # git restore (any form that discards working tree changes)
+    # Allow --staged without --worktree (only affects index, safe)
+    pattern='(^|[^[:alnum:]_])git[[:space:]]+restore([^[:alnum:]_]|$)'
+    pattern_staged='--staged'
+    pattern_worktree='--worktree'
+    if matches "$pattern" && (! matches "$pattern_staged" || matches "$pattern_worktree"); then
+        check_and_maybe_block "git-destructive" "HIGH" "Git restore discards uncommitted changes. Use --staged (without --worktree) to only unstage files safely."
+    fi
 fi
 
 # Remote Code Execution (HIGH)

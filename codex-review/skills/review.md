@@ -94,8 +94,8 @@ If the user explicitly wants fixes applied automatically, or wants no prompts:
 
 - For code: `/codex-review:code --auto`
 - For single plan: `/codex-review:plan --auto`
-- For single plan with fixes: `/codex-review:plan --fix`
-- For single plan with fixes, no prompts: `/codex-review:plan --auto --fix`
+- For single plan with fixes (prompts for confirmation): `/codex-review:plan --fix`
+- For single plan with fixes (no prompts): `/codex-review:plan --auto --fix`
 - For multiple plans: `/codex-review:plan-batch --auto`
 - For multiple plans with fixes: `/codex-review:plan-batch --auto --fix`
 

@@ -14,7 +14,7 @@ You are configuring the safeguard plugin's protection categories.
 | system-control     | shutdown, reboot, kill init, chmod/chown on root | ON      |
 | git-commits        | All git commit commands                          | ON      |
 | git-pushes         | All git push commands                            | ON      |
-| git-destructive    | reset --hard, clean -f, force push, branch -D    | ON      |
+| git-destructive    | reset --hard, clean -f, force push, branch -D, checkout ., restore | ON      |
 | remote-code-exec   | curl\|sh, wget\|bash, piped URLs to shell        | ON      |
 | database-destructive | DELETE, DROP, TRUNCATE, ALTER via psql/mysql/mariadb/sqlcmd/sqlite3/mongosh | ON |
 | network-exfil      | scp, rsync, netcat, curl POST with files         | OFF     |
