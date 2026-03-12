@@ -35,18 +35,9 @@ if [[ "$COMMAND" == "__NO_COMMAND__" ]]; then
     exit 0
 fi
 
-# Find config directory (with fallback)
-find_config_dir() {
-    if [[ -n "${CLAUDE_PROJECT_DIR:-}" ]] && [[ -d "$CLAUDE_PROJECT_DIR/.claude" ]]; then
-        echo "$CLAUDE_PROJECT_DIR/.claude/.safeguard"
-    elif [[ -d "$PWD/.claude" ]]; then
-        echo "$PWD/.claude/.safeguard"
-    else
-        echo "$HOME/.claude/.safeguard"
-    fi
-}
-
-CONFIG_DIR=$(find_config_dir)
+# Find config directory (shared helper)
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+CONFIG_DIR=$("$PLUGIN_ROOT/scripts/resolve-config-dir.sh")
 CONFIG_FILE="$CONFIG_DIR/config.json"
 
 # Default protection settings (all ON except network-exfil and containers)
@@ -67,8 +58,8 @@ is_category_enabled() {
     local category="$1"
     if [[ -f "$CONFIG_FILE" ]]; then
         local enabled
-        # Use | tostring to handle booleans properly (jq's // treats false as falsy)
-        enabled=$(jq -r ".enabled[\"$category\"] | tostring" "$CONFIG_FILE" 2>/dev/null)
+        # Use --arg to avoid jq string injection; tostring handles booleans properly
+        enabled=$(jq -r --arg cat "$category" '.enabled[$cat] | tostring' "$CONFIG_FILE" 2>/dev/null)
         if [[ "$enabled" == "true" ]]; then
             return 0
         elif [[ "$enabled" == "false" ]]; then
@@ -87,38 +78,30 @@ has_allow_flag() {
     local flag_file="$CONFIG_DIR/.allow-$category"
     local consumed_file="$CONFIG_DIR/.consumed-$category-$$"
 
-    if [[ -f "$flag_file" ]]; then
-        # Atomically try to consume the flag by renaming it
-        # This prevents TOCTOU race conditions where multiple processes
-        # could both read and consume the same flag
-        if ! mv "$flag_file" "$consumed_file" 2>/dev/null; then
-            # Another process consumed it first
-            return 1
-        fi
+    if [[ ! -f "$flag_file" ]]; then
+        return 1
+    fi
 
-        # Check if flag is stale (older than 60 seconds)
-        local now
-        now=$(date +%s)
-        local flag_time
-        flag_time=$(cat "$consumed_file" 2>/dev/null || echo "0")
+    # Atomically consume the flag by renaming it.
+    # Prevents TOCTOU races where multiple processes could both consume the same flag.
+    if ! mv "$flag_file" "$consumed_file" 2>/dev/null; then
+        return 1  # Another process consumed it first
+    fi
 
-        # Validate flag_time is numeric
-        if ! [[ "$flag_time" =~ ^[0-9]+$ ]]; then
-            rm -f "$consumed_file"
-            return 1
-        fi
+    local now flag_time delta valid=1
+    now=$(date +%s)
+    flag_time=$(cat "$consumed_file" 2>/dev/null || echo "0")
 
-        local delta=$(( now - flag_time ))
+    # Validate timestamp and check staleness (60-second window)
+    if [[ "$flag_time" =~ ^[0-9]+$ ]]; then
+        delta=$(( now - flag_time ))
         if (( delta >= 0 && delta < 60 )); then
-            # Flag is valid - already consumed by rename
-            rm -f "$consumed_file"
-            return 0
-        else
-            # Flag is stale, remove it
-            rm -f "$consumed_file"
+            valid=0
         fi
     fi
-    return 1
+
+    rm -f "$consumed_file"
+    return $valid
 }
 
 # Output block message

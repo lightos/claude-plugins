@@ -25,14 +25,14 @@ You are configuring the safeguard plugin's protection categories.
 1. First, read the current config if it exists:
 
 ```bash
-CONFIG_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/.safeguard"
+CONFIG_DIR=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config-dir.sh")
 CONFIG_FILE="$CONFIG_DIR/config.json"
 if [[ -f "$CONFIG_FILE" ]]; then
     cat "$CONFIG_FILE"
 fi
 ```
 
-1. Use AskUserQuestion to ask about EACH category sequentially.
+2. Use AskUserQuestion to ask about EACH category sequentially.
    For each category, ask:
 
    "Enable **{category}** protection? ({description})"
@@ -41,11 +41,11 @@ fi
    - "Keep enabled" or "Enable" (depending on current state)
    - "Disable"
 
-2. After all questions, write the config:
+3. After all questions, write the config:
 
 ```bash
-CONFIG_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/.safeguard"
-mkdir -p "$CONFIG_DIR"
+CONFIG_DIR=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config-dir.sh" --write)
+mkdir -p "$CONFIG_DIR" && chmod 700 "$CONFIG_DIR"
 cat > "$CONFIG_DIR/config.json" << 'EOF'
 {
   "enabled": {
@@ -65,7 +65,7 @@ EOF
 
 (Replace true/false based on user's choices)
 
-1. Show final summary of enabled/disabled categories.
+4. Show final summary of enabled/disabled categories.
 
 ## Quick Configuration Options
 

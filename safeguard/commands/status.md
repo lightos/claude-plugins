@@ -11,7 +11,7 @@ Show the current status of all safeguard protections.
 1. Read and display the current configuration:
 
 ```bash
-CONFIG_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/.safeguard"
+CONFIG_DIR=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config-dir.sh")
 CONFIG_FILE="$CONFIG_DIR/config.json"
 
 echo "=== Safeguard Protection Status ==="
@@ -59,10 +59,10 @@ else
 fi
 ```
 
-1. Format the output nicely for the user, showing:
+2. Format the output nicely for the user, showing:
    - Which categories are enabled vs disabled
    - Any active one-time bypass flags
    - The config file location
 
-1. Remind the user they can use `/safeguard:config` to change settings or
+3. Remind the user they can use `/safeguard:config` to change settings or
    `/safeguard:allow-dangerous <category>` for one-time bypasses.

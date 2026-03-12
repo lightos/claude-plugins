@@ -34,19 +34,26 @@ You are setting a one-time bypass flag for the safeguard plugin.
 4. If user confirmed, create the allow flag file:
 
 ```bash
-# Create the safeguard config directory if needed
-CONFIG_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/.safeguard"
-mkdir -p "$CONFIG_DIR"
+# Validate category programmatically (defense in depth)
+category="{{category}}"
+valid_categories="system-destruction system-control git-commits git-pushes git-destructive remote-code-exec database-destructive network-exfil containers"
+if ! echo "$valid_categories" | grep -qw "$category"; then
+    echo "ERROR: Invalid category '$category'"
+    exit 1
+fi
+
+CONFIG_DIR=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config-dir.sh" --write)
+mkdir -p "$CONFIG_DIR" && chmod 700 "$CONFIG_DIR"
 
 # Create the timestamped flag file
-echo "$(date +%s)" > "$CONFIG_DIR/.allow-{{category}}"
+echo "$(date +%s)" > "$CONFIG_DIR/.allow-$category"
 ```
 
-1. Confirm to the user: "Safeguard bypass enabled for **{{category}}**.
+5. Confirm to the user: "Safeguard bypass enabled for **{{category}}**.
    The next command in this category will be allowed.
    This expires in 60 seconds or after one use."
 
-1. Now retry the original command that was blocked.
+6. Now retry the original command that was blocked.
 
 ## Important
 
