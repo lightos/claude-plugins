@@ -90,11 +90,13 @@ The bypass:
 5. If the user approves, Claude runs `/safeguard:allow-dangerous <category>`
    and retries
 
-## Configuration Storage
+## Storage
+
+### Category Configuration
 
 Configuration is stored in: `$CLAUDE_PROJECT_DIR/.claude/.safeguard/config.json`
 
-Fallback locations:
+Fallback locations (in order):
 
 1. `$CLAUDE_PROJECT_DIR/.claude/.safeguard/`
 2. `$PWD/.claude/.safeguard/`
@@ -105,6 +107,18 @@ key for a newly added category, that category defaults to **disabled** (OFF).
 This is a conservative safety choice -- existing configurations are not
 silently modified by plugin updates. To enable a new category, run
 `/safeguard:config` or manually add the category key to `config.json`.
+
+### Bypass Flags
+
+One-time bypass flags are stored separately from configuration using a
+deterministic path that skips `$PWD` (which can differ between hook
+subprocesses and Bash tool calls, especially in worktrees):
+
+1. `$CLAUDE_PROJECT_DIR/.claude/.safeguard/` (if `CLAUDE_PROJECT_DIR` is set)
+2. `$HOME/.claude/.safeguard/` (fallback)
+
+Both the hook and the `allow-dangerous` command resolve flags via
+`resolve-config-dir.sh --flags` to guarantee they always agree on the path.
 
 ## Testing
 

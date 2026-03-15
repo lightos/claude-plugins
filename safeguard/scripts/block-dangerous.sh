@@ -72,11 +72,15 @@ is_category_enabled() {
     [[ "${DEFAULT_ENABLED[$category]:-false}" == "true" ]]
 }
 
+# Allow flags use a deterministic path (skips PWD) to avoid mismatches between
+# hook subprocesses and Bash tool calls, which can have different working dirs.
+FLAG_DIR=$("$PLUGIN_ROOT/scripts/resolve-config-dir.sh" --flags)
+
 # Check if category has a one-time allow flag
 has_allow_flag() {
     local category="$1"
-    local flag_file="$CONFIG_DIR/.allow-$category"
-    local consumed_file="$CONFIG_DIR/.consumed-$category-$$"
+    local flag_file="$FLAG_DIR/.allow-$category"
+    local consumed_file="$FLAG_DIR/.consumed-$category-$$"
 
     if [[ ! -f "$flag_file" ]]; then
         return 1

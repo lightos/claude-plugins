@@ -42,18 +42,19 @@ if ! echo "$valid_categories" | grep -qw "$category"; then
     exit 1
 fi
 
-CONFIG_DIR=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config-dir.sh" --write)
-mkdir -p "$CONFIG_DIR" && chmod 700 "$CONFIG_DIR"
+# Resolve flag directory via shared helper (deterministic, skips PWD)
+FLAG_DIR=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config-dir.sh" --flags)
+mkdir -p "$FLAG_DIR" && chmod 700 "$FLAG_DIR"
 
 # Create the timestamped flag file
-echo "$(date +%s)" > "$CONFIG_DIR/.allow-$category"
+echo "$(date +%s)" > "$FLAG_DIR/.allow-$category"
 ```
 
-5. Confirm to the user: "Safeguard bypass enabled for **{{category}}**.
+1. Confirm to the user: "Safeguard bypass enabled for **{{category}}**.
    The next command in this category will be allowed.
    This expires in 60 seconds or after one use."
 
-6. Now retry the original command that was blocked.
+1. Now retry the original command that was blocked.
 
 ## Important
 

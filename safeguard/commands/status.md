@@ -47,8 +47,10 @@ fi
 
 echo ""
 echo "=== Active Allow Flags ==="
-if [[ -d "$CONFIG_DIR" ]]; then
-    flags=$(ls -la "$CONFIG_DIR"/.allow-* 2>/dev/null || true)
+# Resolve flag directory via shared helper (deterministic, skips PWD)
+FLAG_DIR=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config-dir.sh" --flags)
+if [[ -d "$FLAG_DIR" ]]; then
+    flags=$(ls -la "$FLAG_DIR"/.allow-* 2>/dev/null || true)
     if [[ -n "$flags" ]]; then
         echo "$flags"
     else
@@ -59,10 +61,10 @@ else
 fi
 ```
 
-2. Format the output nicely for the user, showing:
+1. Format the output nicely for the user, showing:
    - Which categories are enabled vs disabled
    - Any active one-time bypass flags
    - The config file location
 
-3. Remind the user they can use `/safeguard:config` to change settings or
+1. Remind the user they can use `/safeguard:config` to change settings or
    `/safeguard:allow-dangerous <category>` for one-time bypasses.
