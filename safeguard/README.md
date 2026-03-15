@@ -75,7 +75,7 @@ Example:
 The bypass:
 
 - Expires after 60 seconds
-- Is consumed after one use
+- Survives retries (not consumed on use, so failed commands don't waste the flag)
 - Only applies to the specified category
 
 ## How It Works

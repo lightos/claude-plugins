@@ -51,13 +51,12 @@ echo "$(date +%s)" > "$FLAG_DIR/.allow-$category"
 ```
 
 1. Confirm to the user: "Safeguard bypass enabled for **{{category}}**.
-   The next command in this category will be allowed.
-   This expires in 60 seconds or after one use."
+   Commands in this category will be allowed for the next 60 seconds."
 
 1. Now retry the original command that was blocked.
 
 ## Important
 
-- This flag is consumed after ONE command is allowed
 - The flag expires after 60 seconds as a safety measure
+- The flag is NOT consumed on use — retries after failed commands (e.g. pre-commit hooks) work without re-approval
 - Each category requires its own allow flag

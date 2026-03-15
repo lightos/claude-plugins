@@ -76,36 +76,34 @@ is_category_enabled() {
 # hook subprocesses and Bash tool calls, which can have different working dirs.
 FLAG_DIR=$("$PLUGIN_ROOT/scripts/resolve-config-dir.sh" --flags)
 
-# Check if category has a one-time allow flag
+# Check if category has a valid allow flag.
+# Flags are NOT consumed on check — the 60-second expiry handles cleanup.
+# This avoids the problem where a PreToolUse check consumes the flag but the
+# command then fails (e.g. pre-commit hooks reformat files), leaving no flag
+# for the retry attempt.
 has_allow_flag() {
     local category="$1"
     local flag_file="$FLAG_DIR/.allow-$category"
-    local consumed_file="$FLAG_DIR/.consumed-$category-$$"
 
     if [[ ! -f "$flag_file" ]]; then
         return 1
     fi
 
-    # Atomically consume the flag by renaming it.
-    # Prevents TOCTOU races where multiple processes could both consume the same flag.
-    if ! mv "$flag_file" "$consumed_file" 2>/dev/null; then
-        return 1  # Another process consumed it first
-    fi
-
-    local now flag_time delta valid=1
+    local now flag_time
     now=$(date +%s)
-    flag_time=$(cat "$consumed_file" 2>/dev/null || echo "0")
+    flag_time=$(cat "$flag_file" 2>/dev/null || echo "0")
 
     # Validate timestamp and check staleness (60-second window)
     if [[ "$flag_time" =~ ^[0-9]+$ ]]; then
-        delta=$(( now - flag_time ))
+        local delta=$(( now - flag_time ))
         if (( delta >= 0 && delta < 60 )); then
-            valid=0
+            return 0
         fi
     fi
 
-    rm -f "$consumed_file"
-    return $valid
+    # Expired or invalid — clean up
+    rm -f "$flag_file"
+    return 1
 }
 
 # Output block message
