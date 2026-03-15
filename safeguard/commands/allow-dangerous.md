@@ -36,11 +36,10 @@ You are setting a one-time bypass flag for the safeguard plugin.
 ```bash
 # Validate category programmatically (defense in depth)
 category="{{category}}"
-valid_categories="system-destruction system-control git-commits git-pushes git-destructive remote-code-exec database-destructive network-exfil containers"
-if ! echo "$valid_categories" | grep -qw "$category"; then
-    echo "ERROR: Invalid category '$category'"
-    exit 1
-fi
+case "$category" in
+    system-destruction|system-control|git-commits|git-pushes|git-destructive|remote-code-exec|database-destructive|network-exfil|containers) ;;
+    *) echo "ERROR: Invalid category '$category'"; exit 1 ;;
+esac
 
 # Resolve flag directory via shared helper (deterministic, skips PWD)
 FLAG_DIR=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config-dir.sh" --flags)

@@ -22,10 +22,10 @@ You are configuring the safeguard plugin's protection categories.
 
 ## Instructions
 
-1. First, read the current config if it exists:
+1. First, resolve the config directory and read the current config if it exists:
 
 ```bash
-CONFIG_DIR=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config-dir.sh")
+CONFIG_DIR=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config-dir.sh" --write)
 CONFIG_FILE="$CONFIG_DIR/config.json"
 if [[ -f "$CONFIG_FILE" ]]; then
     cat "$CONFIG_FILE"
@@ -44,7 +44,6 @@ fi
 1. After all questions, write the config:
 
 ```bash
-CONFIG_DIR=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-config-dir.sh" --write)
 mkdir -p "$CONFIG_DIR" && chmod 700 "$CONFIG_DIR"
 cat > "$CONFIG_DIR/config.json" << 'EOF'
 {
